@@ -10,8 +10,9 @@ import eventsRoutes from "./routes/events.routes";
 import braindumpRoutes from "./routes/braindump.routes";
 
 import contextRoutes from "./routes/context.routes";
-
-
+import aiRoutes from "./routes/ai.routes";
+import memoryRoutes from "./routes/memory.routes";
+import stalenessRoutes from "./routes/staleness.routes";
 const app = express();
 
 app.use(cors());
@@ -25,6 +26,15 @@ app.use("/braindump", braindumpRoutes);
 
 // Mount context route
 app.use("/context", contextRoutes);
+
+// Mount AI route
+app.use("/ai", aiRoutes);
+
+// Mount memory route
+app.use("/memory", memoryRoutes);
+
+// Mount staleness route
+app.use("/staleness", stalenessRoutes);
 
 // middleware example
 app.use((req: Request, res: Response, next: NextFunction) => {

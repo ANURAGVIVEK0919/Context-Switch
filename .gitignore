@@ -37,3 +37,6 @@ Thumbs.db
 .cache/
 .parcel-cache/
 .eslintcache
+
+# Database
+*.db

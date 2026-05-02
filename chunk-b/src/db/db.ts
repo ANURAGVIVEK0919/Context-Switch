@@ -59,6 +59,27 @@ db.prepare(`
   )
 `).run();
 
+// Create memory_nodes table if not exists
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS memory_nodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
+    content TEXT,
+    type TEXT,
+    score REAL,
+    project TEXT,
+    ts INTEGER
+  )
+`).run();
 
+// Create staleness_scores table if not exists
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS staleness_scores (
+    filePath TEXT PRIMARY KEY,
+    last_seen INTEGER,
+    edit_count INTEGER,
+    score REAL
+  )
+`).run();
 
 export default db;

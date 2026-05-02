@@ -5,6 +5,9 @@
 
 import { Router, Request, Response } from "express";
 import db from "../db/db";
+import { buildContextFromMemory } from "../services/memoryService";
+import { generateContextSummary } from "../services/aiService";
+import { getAllScores } from "../services/stalenessService";
 
 const router = Router();
 
@@ -61,6 +64,35 @@ router.get("/", (req: Request, res: Response) => {
   } catch (err) {
     console.error("Context error:", err);
     res.status(500).json({ error: "Failed to generate context" });
+  }
+});
+
+router.get("/enhanced", async (req: Request, res: Response) => {
+  try {
+    const project = (req.query.project as string) || "default";
+    
+    // fetch recent events (last 24 hrs mock limit)
+    const recentEvents = db.prepare(`SELECT * FROM events ORDER BY timestamp DESC LIMIT 50`).all();
+    const recentBraindumps = db.prepare(`SELECT * FROM braindumps ORDER BY timestamp DESC LIMIT 10`).all();
+    
+    const memoryContext = buildContextFromMemory(project);
+    const stalenessScores = getAllScores();
+    
+    // For now we just pass a string representing context to AI
+    const combinedContext = `Events: ${recentEvents.length}\nMemory Context:\n${memoryContext}`;
+    
+    const aiSummaryResponse = await generateContextSummary(combinedContext);
+    
+    res.json({
+      events: recentEvents,
+      braindumps: recentBraindumps,
+      memoryContext,
+      stalenessScores,
+      aiSummary: aiSummaryResponse
+    });
+  } catch (err) {
+    console.error("Enhanced context error:", err);
+    res.status(500).json({ error: "Failed to generate enhanced context" });
   }
 });
 
