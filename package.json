@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "contextswitch-monorepo",
+  "workspaces": [
+    "chunk-a",
+    "chunk-b",
+    "chunk-c/extension"
+  ]
+}
