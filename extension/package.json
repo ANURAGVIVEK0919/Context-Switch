@@ -1,0 +1,51 @@
+{
+  "name": "contextswitch-extension",
+  "displayName": "ContextSwitch Extension",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "1.118.1"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "contextswitch.testEvent",
+        "title": "Test ContextSwitch Event"
+      },
+      {
+        "command": "contextswitch.showEvents",
+        "title": "Show ContextSwitch Events"
+      },
+      {
+        "command": "contextswitch.addBrainDump",
+        "title": "Add Brain Dump"
+      },
+      {
+        "command": "contextswitch.showContext",
+        "title": "Show Context Summary"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . --watch"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "node-fetch": "^3.3.2",
+    "ws": "^8.20.0"
+  },
+  "bundledDependencies": [
+    "ws",
+    "node-fetch"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.118.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.3.3"
+  }
+}
