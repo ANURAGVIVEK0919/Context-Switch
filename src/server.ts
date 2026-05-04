@@ -14,6 +14,8 @@ import contextRouter from './routes/context.routes';
 import stalenessRouter from './routes/staleness.routes';
 import braindumpRouter from './routes/braindump.routes';
 import { registerRealtimeClient } from './realtime';
+import './websocket/wsServer'; // Start VS Code extension WebSocket listener on port 3002
+
 
 const app = express();
 app.use(cors());

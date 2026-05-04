@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 type RealtimePayload = {
   type: string;
   count?: number;
+  sessionId?: number;
 };
 
 const clients = new Set<WebSocket>();

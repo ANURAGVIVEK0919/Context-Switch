@@ -41,24 +41,28 @@
     --color-surface-dim: #EEF2F7;
     --color-outline: #D8DEE8;
     --color-outline-strong: #B8C2D1;
-    
+    --color-tooltip-bg: #FFFFFF;
+    --color-code-bg: #F0F4FF;
+
     --color-on-background: #111827;
     --color-on-surface: #111827;
     --color-on-surface-variant: #4B5563;
-    
+
     --color-primary: #111827;
     --color-secondary: #4B5563;
     --color-tertiary: #6B7280;
-    
-    /* Darken 15% for light mode */
-    --color-primary-container: #2563EB; 
-    --color-secondary-container: #B45309; 
-    --color-error: #EF4444; 
-  --color-success: #15803d;
-  --color-warning: #b45309;
-  --color-danger: #dc2626;
-  --color-info: #2563eb;
-  --color-muted: #8b5cf6;
+
+    --color-primary-container: #2563EB;
+    --color-secondary-container: #B45309;
+    --color-error: #EF4444;
+    --color-success: #15803d;
+    --color-warning: #b45309;
+    --color-danger: #dc2626;
+    --color-info: #2563eb;
+    --color-muted: #8b5cf6;
+
+    /* Light mode bar unfilled */
+    --color-bar-empty: #D8DEE8;
   }
 
   body {
@@ -80,4 +84,22 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-on-surface-variant);
+}
+
+/* ── Code / diff block ────────────────────────────────────────────
+   Always uses its own background regardless of light/dark theme.
+   Dark mode: deep purple-slate. Light mode: pale indigo tint.
+*/
+.code-block {
+  background-color: var(--color-code-bg);
+  color: var(--color-on-surface);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  border-left: 2px solid rgba(45, 212, 191, 0.6);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }

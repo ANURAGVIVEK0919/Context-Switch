@@ -5,21 +5,25 @@ import useWebSocket from '../hooks/useWebSocket';
 import InfoTooltip from '../components/InfoTooltip';
 import { getAllEvents, reconstructProject, groupByProject, timeAgo } from '../api';
 
+// value is 0-100 (integer), as returned by the AI
 function ConfidenceBar({ value }) {
   const blocks = 24;
-  const filled = Math.round((value || 0) * blocks);
+  const clamped = Math.min(100, Math.max(0, value || 0));
+  const filled = Math.round((clamped / 100) * blocks);
+  const color = clamped >= 70 ? 'var(--color-success)' : clamped >= 40 ? 'var(--color-warning)' : 'var(--color-error)';
   return (
     <div className="flex gap-px">
       {Array.from({ length: blocks }).map((_, i) => (
         <div
           key={i}
-          className="flex-1 h-2"
-          style={{ backgroundColor: i < filled ? '#4de082' : '#222228' }}
+          className="flex-1 h-2 rounded-sm"
+          style={{ backgroundColor: i < filled ? color : 'var(--color-outline)' }}
         />
       ))}
     </div>
   );
 }
+
 
 const QUERY_TYPES = [
   { id: 'context', label: 'Context Brief' },
@@ -90,8 +94,14 @@ export default function AISynthesis() {
     setState('result');
   }
 
+  // AI returns confidence as 0-100 integer directly (per updated prompts)
   const confidence = result?.confidence || 0;
-  const confidencePct = Math.round(confidence * 100);
+  const confidencePct = Math.min(100, Math.round(confidence)); // clamp just in case
+  const confidenceColor = confidencePct >= 70
+    ? 'var(--color-success)'
+    : confidencePct >= 40
+    ? 'var(--color-warning)'
+    : 'var(--color-error)';
   const nextSteps = Array.isArray(result?.next_steps) ? result.next_steps : [];
   const sources = result?.context_sources || {};
   const currentLabel = getQueryLabel(queryType);
@@ -220,7 +230,7 @@ export default function AISynthesis() {
             {/* Header */}
             <div className="flex justify-between items-end border-b border-outline pb-3">
               <h2 className="font-label-mono-xs text-tertiary uppercase tracking-widest flex items-center">{currentLabel}<InfoTooltip text={currentLabel === 'Context Brief' ? 'A 1-2 sentence AI summary of what you were working on' : currentLabel === 'Handoff Doc' ? 'A structured handoff note for another developer' : 'An analysis of which files need attention based on edit history'} /></h2>
-              <span className="font-code-snippet text-xs text-primary-container">{confidencePct}% confidence</span>
+              <span className="font-code-snippet text-xs" style={{color: confidenceColor}}>{confidencePct}% confidence</span>
             </div>
 
             {/* Brief */}
@@ -230,9 +240,9 @@ export default function AISynthesis() {
             <div>
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-label-mono-xs text-tertiary uppercase tracking-widest flex items-center">Confidence Score<InfoTooltip text="AI's confidence in its analysis based on available context. Higher means more data was available." /></h3>
-                <span className="font-code-snippet text-xs text-on-surface">{confidencePct}%</span>
+                <span className="font-code-snippet text-xs font-bold" style={{color: confidenceColor}}>{confidencePct}%</span>
               </div>
-              <ConfidenceBar value={confidence} />
+              <ConfidenceBar value={confidencePct} />
             </div>
 
             {/* Next Steps */}

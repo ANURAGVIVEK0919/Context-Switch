@@ -2,6 +2,8 @@ import { Router } from 'express';
 import db from '../db';
 import * as sessionService from '../services/sessionService';
 import { broadcastRealtimeUpdate } from '../realtime';
+import { aiReason } from '../services/aiService';
+import { SESSION_SUMMARY_PROMPT } from './reconstruct.routes';
 
 const router = Router();
 
@@ -36,14 +38,35 @@ router.post('/start', (req, res) => {
     }
 });
 
-router.post('/end', (req, res) => {
+router.post('/end', async (req, res) => {
     try {
         const { sessionId } = req.body;
         if (sessionId === undefined) {
             return res.status(400).json({ success: false, error: 'sessionId missing' });
         }
         const result = sessionService.endSession(Number(sessionId));
-        res.status(200).json({ success: true, result });
+
+        // Respond immediately — don't block the client on AI generation
+        res.status(200).json({ success: true, result, ai_summary_pending: true });
+
+        // Fire AI session summary generation async (fire and forget)
+        setImmediate(async () => {
+            try {
+                const contextString = sessionService.buildSessionContext(Number(sessionId));
+                const aiData = await aiReason(
+                    contextString,
+                    'Generate a detailed session summary based on the session log provided.',
+                    SESSION_SUMMARY_PROMPT
+                );
+                db.prepare(`UPDATE sessions SET ai_summary = ? WHERE id = ?`)
+                    .run(JSON.stringify(aiData), Number(sessionId));
+                broadcastRealtimeUpdate({ type: 'session_summary_ready', sessionId: Number(sessionId) });
+                console.log(`✅ AI session summary generated for session ${sessionId}`);
+            } catch (aiErr: any) {
+                console.error(`⚠️ AI session summary failed for session ${sessionId}:`, aiErr.message);
+            }
+        });
+
     } catch (error: any) {
         if (error.message === 'Session not found' || error.message === 'Session already ended') {
             return res.status(404).json({ success: false, error: error.message });
@@ -52,7 +75,7 @@ router.post('/end', (req, res) => {
     }
 });
 
-router.post('/end-by-project', (req, res) => {
+router.post('/end-by-project', async (req, res) => {
     try {
         const { project } = req.body;
         if (!project) return res.status(400).json({ success: false, error: 'project missing' });
@@ -61,7 +84,28 @@ router.post('/end-by-project', (req, res) => {
         if (!row) return res.status(404).json({ success: false, error: 'No active session for project' });
 
         const result = sessionService.endSession(Number(row.id));
-        res.status(200).json({ success: true, result });
+
+        // Respond immediately
+        res.status(200).json({ success: true, result, ai_summary_pending: true });
+
+        // Fire AI session summary async (same as /end)
+        setImmediate(async () => {
+            try {
+                const contextString = sessionService.buildSessionContext(Number(row.id));
+                const aiData = await aiReason(
+                    contextString,
+                    'Generate a detailed session summary based on the session log provided.',
+                    SESSION_SUMMARY_PROMPT
+                );
+                db.prepare(`UPDATE sessions SET ai_summary = ? WHERE id = ?`)
+                    .run(JSON.stringify(aiData), Number(row.id));
+                broadcastRealtimeUpdate({ type: 'session_summary_ready', sessionId: Number(row.id) });
+                console.log(`✅ AI session summary generated for session ${row.id} (project: ${project})`);
+            } catch (aiErr: any) {
+                console.error(`⚠️ AI session summary failed for session ${row.id}:`, aiErr.message);
+            }
+        });
+
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -145,7 +189,6 @@ router.post('/events/ingest', (req, res) => {
             return res.status(400).json({ success: false, error: 'events array required' });
         }
 
-        const db = require('../db').default;
         const { updateScore } = require('../services/stalenessService');
 
         for (const event of events) {
@@ -173,13 +216,15 @@ router.post('/events/ingest', (req, res) => {
                 fileChangeCounter = 0;
                 const session = sessionService.getCurrentSession();
                 if (session) {
+                    // ✅ Fixed: column is session_id not sessionId
                     db.prepare(`
-                        INSERT INTO memory_nodes (sessionId, project, content, ts)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO memory_nodes (session_id, project, content, type, ts)
+                        VALUES (?, ?, ?, ?, ?)
                     `).run(
                         session.id,
                         event.project,
                         `Auto-snapshot: Heavy activity in ${event.filePath} (${event.language || 'unknown'} file)`,
+                        'auto_snapshot',
                         Date.now()
                     );
                 }

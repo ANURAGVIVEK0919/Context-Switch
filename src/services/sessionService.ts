@@ -84,3 +84,96 @@ export function getSessionStats(): { totalSessions: number; totalDuration: numbe
 
     return { totalSessions, totalDuration, avgDuration };
 }
+
+/**
+ * Builds a rich context string from all events during a session.
+ * This is passed to the AI to generate a detailed session summary.
+ */
+export function buildSessionContext(sessionId: number): string {
+    const session = getSessionById(sessionId) as any;
+    if (!session) throw new Error('Session not found');
+
+    const endTs = session.end_ts || Date.now();
+    const durationMins = Math.floor((endTs - session.start_ts) / 60000);
+
+    // All events during the session window
+    const allEvents = db.prepare(`
+        SELECT type, filePath, language, diff, severity, ts FROM events
+        WHERE project = ? AND ts >= ? AND ts <= ?
+        ORDER BY ts ASC
+    `).all(session.project, session.start_ts, endTs) as any[];
+
+    // Brain dumps during this session
+    const braindumps = db.prepare(`
+        SELECT content, ts FROM braindumps
+        WHERE ts >= ? AND ts <= ?
+        ORDER BY ts ASC
+    `).all(session.start_ts, endTs) as any[];
+
+    // Memory nodes created during this session
+    const memoryNodes = db.prepare(`
+        SELECT content, type, ts FROM memory_nodes
+        WHERE session_id = ?
+        ORDER BY ts ASC
+    `).all(sessionId) as any[];
+
+    // Categorise events
+    const fileChanges = allEvents.filter(e => e.type === 'file:change');
+    const gitCommits = allEvents.filter(e => e.type === 'git:commit');
+    const gitActivity = allEvents.filter(e => e.type === 'git:activity');
+    const errors = allEvents.filter(e => e.type === 'diagnostic:error');
+    const terminalCmds = allEvents.filter(e => e.type === 'terminal:command');
+
+    // Unique files touched
+    const uniqueFiles = [...new Set(allEvents.map(e => e.filePath).filter(Boolean))];
+
+    const formatTs = (ts: number) => new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const context = `
+=== SESSION CONTEXT ===
+Project: ${session.project}
+Duration: ${durationMins} minutes (${formatTs(session.start_ts)} → ${formatTs(endTs)})
+Total Events: ${allEvents.length}
+Unique Files Touched: ${uniqueFiles.length}
+
+=== FILES EDITED (${fileChanges.length} changes) ===
+${fileChanges.length > 0
+    ? fileChanges.map(e => `  [${formatTs(e.ts)}] ${e.filePath}${e.language ? ` (${e.language})` : ''}: ${e.diff || 'modified'}`).join('\n')
+    : '  None'}
+
+=== GIT COMMITS (${gitCommits.length}) ===
+${gitCommits.length > 0
+    ? gitCommits.map(e => `  [${formatTs(e.ts)}] ${e.diff || e.filePath}`).join('\n')
+    : '  None'}
+
+=== GIT SAVES (${gitActivity.length}) ===
+${gitActivity.length > 0
+    ? gitActivity.map(e => `  [${formatTs(e.ts)}] ${e.filePath}`).join('\n')
+    : '  None'}
+
+=== ERRORS ENCOUNTERED (${errors.length}) ===
+${errors.length > 0
+    ? errors.map(e => `  [${e.severity?.toUpperCase() || 'ERROR'}] ${e.filePath}: ${e.diff}`).join('\n')
+    : '  None — clean session!'}
+
+=== TERMINAL COMMANDS (${terminalCmds.length}) ===
+${terminalCmds.length > 0
+    ? terminalCmds.map(e => `  $ ${e.diff}`).join('\n')
+    : '  None captured'}
+
+=== DEVELOPER BRAIN DUMPS (${braindumps.length}) ===
+${braindumps.length > 0
+    ? braindumps.map(b => `  [${formatTs(b.ts)}] "${b.content}"`).join('\n')
+    : '  None — no notes logged'}
+
+=== AUTO MEMORY NODES (${memoryNodes.length}) ===
+${memoryNodes.length > 0
+    ? memoryNodes.map(m => `  [${m.type}] ${m.content}`).join('\n')
+    : '  None'}
+
+=== ALL UNIQUE FILES ===
+${uniqueFiles.map(f => `  - ${f}`).join('\n') || '  None'}
+    `.trim();
+
+    return context;
+}

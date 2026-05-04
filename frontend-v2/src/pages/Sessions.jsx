@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronDown, Search, ChevronRight, FileCode, ArrowRight } from 'lucide-react';
+import { ChevronDown, Search, ChevronRight, FileCode, ArrowRight, Brain, Sparkles } from 'lucide-react';
 import { useApi } from '../hooks';
 import useWebSocket from '../hooks/useWebSocket';
 import InfoTooltip from '../components/InfoTooltip';
@@ -291,7 +291,7 @@ export default function Sessions() {
                       </span>
                     )}
                   </h2>
-                  {selected.summary && <p className="text-xs text-tertiary font-mono">{selected.summary}</p>}
+                  {selected.summary && <p className="text-xs text-tertiary font-mono mt-1">{selected.summary}</p>}
                 </div>
                 <div className="flex gap-5 text-right">
                   <div>
@@ -308,6 +308,52 @@ export default function Sessions() {
                   </div>
                 </div>
               </div>
+
+              {/* AI Session Summary Panel */}
+              {(() => {
+                let aiSummary = null;
+                try { aiSummary = selected.ai_summary ? JSON.parse(selected.ai_summary) : null; } catch {}
+                if (!aiSummary) return null;
+                return (
+                  <div className="mt-4 border border-primary-container/30 bg-primary-container/5 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles size={13} className="text-primary-container" />
+                      <span className="font-label-mono-xs text-primary-container uppercase tracking-widest">AI Session Summary</span>
+                      {aiSummary.confidence != null && (
+                        <span className="ml-auto text-[10px] font-mono text-tertiary">confidence {aiSummary.confidence}%</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-on-surface font-mono leading-relaxed mb-3">{aiSummary.summary}</p>
+                    {aiSummary.key_insight && (
+                      <div className="border-l-2 border-primary-container pl-3 mb-3">
+                        <span className="text-[10px] text-tertiary uppercase tracking-widest font-mono">Key Insight · </span>
+                        <span className="text-xs text-on-surface font-mono">{aiSummary.key_insight}</span>
+                      </div>
+                    )}
+                    {aiSummary.next_steps?.length > 0 && (
+                      <div>
+                        <div className="text-[10px] text-tertiary uppercase tracking-widest font-mono mb-1.5">Next Session →</div>
+                        <ul className="space-y-1">
+                          {aiSummary.next_steps.map((s, i) => (
+                            <li key={i} className="text-xs text-on-surface font-mono flex items-start gap-2">
+                              <span className="text-primary-container mt-0.5">›</span>{s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {aiSummary.errors_fixed?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        <span className="text-[10px] text-tertiary uppercase tracking-widest font-mono mr-1">Fixed:</span>
+                        {aiSummary.errors_fixed.map((e, i) => (
+                          <span key={i} className="text-[10px] font-mono border border-success/30 text-success px-1.5 py-0.5">{e}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* End session button if active */}
               {selected.status === 'active' && (
                 <button
@@ -360,7 +406,7 @@ export default function Sessions() {
                                 <span className="text-tertiary ml-auto">{e.type}</span>
                               </div>
                               {e.diff ? (
-                                <pre className="mx-4 mb-3 bg-[#0C0C0E] border border-outline border-l-2 border-l-teal-400 p-3 overflow-x-auto text-[12px] leading-relaxed font-code-snippet whitespace-pre-wrap text-on-surface">
+                                <pre className="code-block mx-4 mb-3">
                                   {e.diff}
                                 </pre>
                               ) : (

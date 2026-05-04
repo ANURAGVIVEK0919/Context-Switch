@@ -50,7 +50,6 @@ db.exec(`
 `);
 
 // Migration safety: Ensure all required columns exist in 'events' table
-// Uses "ts" instead of "timestamp" to match conventions.
 const requiredEventColumns = [
   { name: "language", type: "TEXT" },
   { name: "project", type: "TEXT" },
@@ -58,7 +57,6 @@ const requiredEventColumns = [
   { name: "diff", type: "TEXT" }
 ];
 
-// Check for missing columns and add them if needed
 const tableInfo = db.prepare('PRAGMA table_info(events);').all();
 const existingColumns = (tableInfo as { name: string }[]).map(col => col.name);
 
@@ -67,6 +65,20 @@ for (const col of requiredEventColumns) {
     db.prepare(`ALTER TABLE events ADD COLUMN ${col.name} ${col.type};`).run();
     console.log(`Migrated: Added column '${col.name}' to events table.`);
   }
+}
+
+// Migration: Add ai_summary column to sessions table if missing
+const sessionTableInfo = db.prepare('PRAGMA table_info(sessions);').all();
+const sessionColumns = (sessionTableInfo as { name: string }[]).map(col => col.name);
+if (!sessionColumns.includes('ai_summary')) {
+  db.prepare(`ALTER TABLE sessions ADD COLUMN ai_summary TEXT;`).run();
+  console.log(`Migrated: Added column 'ai_summary' to sessions table.`);
+}
+
+// Migration: Add severity column to events table for diagnostic events
+if (!existingColumns.includes('severity')) {
+  db.prepare(`ALTER TABLE events ADD COLUMN severity TEXT;`).run();
+  console.log(`Migrated: Added column 'severity' to events table.`);
 }
 
 console.log("Database schema ready ✅");
