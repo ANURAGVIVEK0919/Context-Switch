@@ -50,11 +50,12 @@ The project is organized as a monorepo:
 2.  **Environment Setup**:
     - Copy `.env.example` to `.env`
     - Add your `GROQ_API_KEY` to the `.env` file.
-3.  **Start the Servers**:
-    You need to run both the API and the Ingestion server:
-    
-    *   **API Server**: `npm run dev` (Starts on `http://localhost:3001`)
-    *   **WebSocket Ingestion**: `npm run ws` (Starts on `port 3002`)
+3.  **Start the Backend**:
+    We have combined the servers, so you only need one command:
+    ```bash
+    npm run dev
+    ```
+    *(This starts the HTTP API on port 3001 and the WebSocket listener on port 3002 automatically.)*
 
 ### 2. Frontend (The Dashboard)
 
@@ -71,19 +72,21 @@ The project is organized as a monorepo:
 
 ### 3. VS Code Extension (The Tracker)
 
-1.  **Navigate & Install**:
+We have provided a pre-compiled `.vsix` package for easy installation.
+
+1.  **Install the Extension**:
+    - Open VS Code.
+    - Go to the Extensions view (`Ctrl+Shift+X`).
+    - Click the `...` menu at the top right of the Extensions view.
+    - Select **Install from VSIX...**
+    - Browse to `extension/contextswitch-extension-0.0.1.vsix` and select it.
+2.  **Run from Source (Development)**:
+    If you are editing the extension code, you can run it directly:
     ```bash
     cd extension
     npm install
     ```
-2.  **Run in Development**:
-    - Open the `extension` folder in VS Code.
-    - Press `F5` to open the **Extension Development Host**.
-3.  **Build VSIX (Optional)**:
-    If you want to install it permanently:
-    ```bash
-    npx vsce package
-    ```
+    Open the `extension` folder in VS Code and press `F5` to open the Extension Development Host.
 
 ---
 
