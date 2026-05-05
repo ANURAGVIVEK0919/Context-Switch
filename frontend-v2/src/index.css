@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-background: #0C0C0E;
+    --color-surface: #111115;
+    --color-surface-dim: #18181E;
+    --color-outline: #222228;
+    --color-outline-strong: #2E2E38;
+    --color-tooltip-bg: #111114;
+    --color-code-bg: #0C0C0E;
+    --color-modal-bg: rgba(0, 0, 0, 0.6);
+    
+    --color-on-background: #e2e2e4;
+    --color-on-surface: #e2e2e4;
+    --color-on-surface-variant: #8b919d;
+    
+    --color-primary: #e2e2e4;
+    --color-secondary: #c1c7d3;
+    --color-tertiary: #8b919d;
+    --color-success: #4de082;
+    --color-warning: #F59E0B;
+    --color-danger: #ffb4ab;
+    --color-info: #60A5FA;
+    --color-muted: #cebdff;
+    
+    --color-primary-container: #60A5FA;
+    --color-secondary-container: #F59E0B;
+    --color-error: #ffb4ab;
+
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+  }
+
+  html.light {
+    --color-background: #F4F6FA;
+    --color-surface: #FFFFFF;
+    --color-surface-dim: #EEF2F7;
+    --color-outline: #D8DEE8;
+    --color-outline-strong: #B8C2D1;
+    --color-tooltip-bg: #FFFFFF;
+    --color-code-bg: #F0F4FF;
+
+    --color-on-background: #111827;
+    --color-on-surface: #111827;
+    --color-on-surface-variant: #4B5563;
+
+    --color-primary: #111827;
+    --color-secondary: #4B5563;
+    --color-tertiary: #6B7280;
+
+    --color-primary-container: #2563EB;
+    --color-secondary-container: #B45309;
+    --color-error: #EF4444;
+    --color-success: #15803d;
+    --color-warning: #b45309;
+    --color-danger: #dc2626;
+    --color-info: #2563eb;
+    --color-muted: #8b5cf6;
+
+    /* Light mode bar unfilled */
+    --color-bar-empty: #D8DEE8;
+  }
+
+  body {
+    @apply bg-background text-on-background font-body-md min-h-screen flex;
+  }
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-on-surface-variant);
+}
+
+/* ── Code / diff block ────────────────────────────────────────────
+   Always uses its own background regardless of light/dark theme.
+   Dark mode: deep purple-slate. Light mode: pale indigo tint.
+*/
+.code-block {
+  background-color: var(--color-code-bg);
+  color: var(--color-on-surface);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  border-left: 2px solid rgba(45, 212, 191, 0.6);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
