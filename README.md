@@ -1,116 +1,106 @@
-# 🚀 ContextSwitch: Intelligent Developer Dashboard
+# 🚀 ContextSwitch: Intelligent Developer Memory & Handoff System
 
-> **Bridging the gap between code changes and high-level project context.**
+> **Bridging the gap between granular code changes and high-level architectural intent.**
 
-ContextSwitch is a state-of-the-art developer productivity tool designed for modern engineering workflows. It tracks your granular development activity in VS Code and uses AI to reconstruct the "why" behind your "what," providing a beautiful, data-driven dashboard of your progress, file heatmaps, and session summaries.
-
----
-
-## ✨ Key Features
-
-- **🧠 AI Session Reconstruction**: Automatically generates summaries of your coding sessions using Groq AI.
-- **📊 Real-time Dashboard**: A sleek, dark-mode dashboard built with React and Tailwind CSS.
-- **🔥 File Heatmaps**: Visualize which files are being modified most and which are becoming stale.
-- **🔌 VS Code Integration**: A lightweight extension that streams activity events via WebSockets.
-- **📅 Session History**: Track your productivity over time with a detailed session log.
-- **💾 Persistent Memory**: Automatically captures key project milestones and auto-snapshots.
+ContextSwitch is an AI-powered monorepo designed to act as a "Project Second Brain." By capturing every granular event (Git, Files, Terminal, Errors) and synthesizing them using **Llama 3.3 (Groq AI)**, it provides developers with a persistent, searchable, and proactive memory of their entire project lifecycle.
 
 ---
 
-## 📂 Project Structure
+## 🛠️ System Architecture
 
-The project is organized as a monorepo:
-
-| Component | Path | Technology | Description |
-| :--- | :--- | :--- | :--- |
-| **Backend** | `/` | Node.js, Express, SQLite | The core engine handling storage and AI. |
-| **Ingestion** | `/src/websocket` | WebSockets (ws) | Receives real-time events from VS Code. |
-| **Frontend** | `/frontend-v2` | React, Vite, Tailwind | The visual dashboard UI. |
-| **Extension** | `/extension` | VS Code Extension API | The activity tracker plugin. |
+1.  **Event Ingestion**: VS Code extension streams real-time activity via WebSockets.
+2.  **Knowledge Synthesis**: Sessions are automatically summarized into long-term "Memory Nodes."
+3.  **Hybrid Retrieval**: Combines keyword search with temporal context for high-accuracy AI reasoning.
+4.  **Proactive Pulse**: A heartbeat engine sends context-aware briefings to Telegram.
 
 ---
 
-## 🛠️ Prerequisites
+## ✨ Feature Usage & Workflows
 
-- **Node.js**: `v18.x` or higher
-- **npm**: `v9.x` or higher
-- **VS Code**: Latest version
-- **Groq API Key**: Required for AI summaries ([Get a free key](https://console.groq.com/))
+### 1. VS Code Sidebar (Real-time Flow)
+*   **Timeline**: Automatically refreshes every 4s to show your latest coding activity.
+*   **Ask OpenClaw**: Type questions about your project history in the sidebar chat box.
+*   **Trigger**: Open the ContextSwitch icon in the activity bar.
 
----
+### 2. OpenClaw Handoff (Deep Context)
+*   **Purpose**: Used when returning to a project after a break or switching tasks.
+*   **Output**: Generates a "Catch-up Brief" including current goals, recent hurdles, and long-term history.
+*   **Usage**: Accessed via the Dashboard or the `/reconstruct` API.
 
-## 🚀 Installation & Setup
-
-### 1. Backend (The Brain)
-
-1.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-2.  **Environment Setup**:
-    - Copy `.env.example` to `.env`
-    - Add your `GROQ_API_KEY` to the `.env` file.
-3.  **Start the Backend**:
-    We have combined the servers, so you only need one command:
-    ```bash
-    npm run dev
-    ```
-    *(This starts the HTTP API on port 3001 and the WebSocket listener on port 3002 automatically.)*
-
-### 2. Frontend (The Dashboard)
-
-1.  **Navigate & Install**:
-    ```bash
-    cd frontend-v2
-    npm install
-    ```
-2.  **Launch Dashboard**:
-    ```bash
-    npm run dev
-    ```
-    *Access the UI at `http://localhost:5173`.*
-
-### 3. VS Code Extension (The Tracker)
-
-We have provided a pre-compiled `.vsix` package for easy installation.
-
-1.  **Install the Extension**:
-    - Open VS Code.
-    - Go to the Extensions view (`Ctrl+Shift+X`).
-    - Click the `...` menu at the top right of the Extensions view.
-    - Select **Install from VSIX...**
-    - Browse to `extension/contextswitch-extension-0.0.1.vsix` and select it.
-2.  **Run from Source (Development)**:
-    If you are editing the extension code, you can run it directly:
-    ```bash
-    cd extension
-    npm install
-    ```
-    Open the `extension` folder in VS Code and press `F5` to open the Extension Development Host.
+### 3. Surface 3 (Telegram Heartbeat)
+*   **Morning Brief (08:00)**: Tells you what to work on today based on your stalest projects.
+*   **Evening Nudge (21:00)**: Reminds you to log notes if you haven't coded today.
+*   **Interactive Bot**: 
+    *   Send a **note** (e.g., "Updated the API docs") to save it as a BrainDump.
+    *   Send a **question** (e.g., "What was the fix for the bug?") for instant AI answers.
 
 ---
 
-## 📋 API Documentation
+## 📋 API Reference
 
-The backend provides several REST endpoints for data access:
+### 🟢 Session Management (`/session`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/session/start` | Initialize a new tracking session for a project. |
+| `POST` | `/session/end` | Close a session and trigger AI Memory Synthesis. |
+| `GET` | `/session/history` | Retrieve all past work blocks and event counts. |
+| `GET` | `/session/current` | Get the currently active session details. |
+| `GET` | `/:id/events` | Fetch all raw events captured during a specific session. |
 
-- `GET /session/active`: Retrieve the current active coding session.
-- `GET /dashboard/stats`: Get project-wide productivity statistics.
-- `GET /staleness/scores`: Retrieve file heatmaps and staleness data.
-- `POST /braindump`: Save a manual developer note to the current context.
+### 🧠 AI & Reasoning (`/ask`, `/reconstruct`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/ask` | Ask a natural language question about project history. |
+| `GET` | `/reconstruct/:id` | Generate a deep handoff brief for a specific project. |
+| `GET` | `/ai/summarize` | Manually trigger a summary of the current context. |
+
+### 📈 Dashboard & Analytics (`/dashboard`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/dashboard/stats` | High-level metrics (total sessions, events, projects). |
+| `GET` | `/dashboard/timeline` | Hourly event distribution for activity charting. |
+| `GET` | `/dashboard/staleness` | Focus scores and inactivity tracking for all files. |
+
+### 📝 Notes & Brain Dumps (`/braindump`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/braindump` | Fetch all manual developer notes. |
+| `POST` | `/braindump` | Save a new note (Content, Project, SessionId). |
+
+### 🛠️ Debug & Interaction (`/debug`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/debug/heartbeat/morning` | Manually trigger the Morning Brief notification. |
+| `GET` | `/debug/heartbeat/stale` | Manually trigger Stale Project alerts. |
+| `GET` | `/debug/heartbeat/weekly` | Manually trigger the Weekly Summary. |
 
 ---
 
-## 🛠️ Configuration
+## ⚙️ Configuration (.env)
 
-Customize behavior in your `.env` file:
+The system requires several keys to operate at full capacity:
 
-- `PORT`: API server port (default 3001).
-- `WS_PORT`: Ingestion server port (default 3002).
-- `GROQ_API_KEY`: Your Groq AI credentials.
+```env
+GROQ_API_KEY=gsk_...         # Required for Llama 3.3 Reasoning
+TELEGRAM_BOT_TOKEN=...      # For Surface 3 Notifications
+TELEGRAM_CHAT_ID=...        # Your unique ID from @userinfobot
+PORT=3001                   # HTTP API Port
+WS_PORT=3002                # WebSocket Event Port
+```
 
 ---
 
-## 📜 License
+## 🧪 Automated Testing
 
-Developed as part of the **Samsung Prism** program.
+Verify the end-to-end pipeline using these scripts:
+
+1.  **Full Lifecycle**: `node test/masterTest.js`
+2.  **AI Chat Logic**: `node test/testAskOpenClaw.js`
+3.  **Telegram Delivery**: `node test/testSurface3.js`
+
+---
+
+## 📜 Project Credits
+
+Developed for the **Samsung Prism** program.
+**Core Contributors**: Anurag Vivek & Vaibhav.
