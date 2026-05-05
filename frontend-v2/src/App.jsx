@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ThemeContext } from './ThemeContext';
 import Layout from './components/Layout';
 import Overview from './pages/Overview';
 import Projects from './pages/Projects';
@@ -8,8 +9,6 @@ import BrainDumps from './pages/BrainDumps';
 import AISynthesis from './pages/AISynthesis';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
-
-export const ThemeContext = createContext();
 
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');

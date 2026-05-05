@@ -13,39 +13,26 @@ wss.on("connection", (ws: WebSocket) => {
     try {
       const message = JSON.parse(data.toString());
       console.log("Incoming message:", message);
-      if (message.type === "git:activity") {
+
+      const events = message.type === "batch" ? message.events : [message];
+
+      for (const ev of events) {
+        if (!ev.type || !ev.timestamp) continue;
+
         db.prepare(`
-          INSERT INTO events (type, filePath, timestamp)
-          VALUES (?, ?, ?)
+          INSERT INTO events (type, filePath, language, project, timestamp, diff, message)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
-          message.type,
-          message.filePath,
-          message.timestamp
+          ev.type,
+          ev.filePath || null,
+          ev.language || null,
+          ev.project || null,
+          ev.timestamp,
+          ev.diff || null,
+          ev.message || null
         );
-        console.log("Git activity saved");
-        return;
       }
-      if (
-        !message.type ||
-        !message.filePath ||
-        !message.language ||
-        !message.project ||
-        !message.timestamp
-      ) {
-        console.log("Invalid message ❌", message);
-        return;
-      }
-      db.prepare(`
-        INSERT INTO events (type, filePath, language, project, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(
-        message.type,
-        message.filePath,
-        message.language,
-        message.project,
-        message.timestamp
-      );
-      console.log("Saved enriched event");
+      console.log(`Saved ${events.length} event(s)`);
     } catch (err) {
       console.log("Invalid message ❌", err);
     }

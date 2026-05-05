@@ -31,7 +31,24 @@
         "command": "contextswitch.runOpenClaw",
         "title": "ContextSwitch: Run OpenClaw"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "contextswitch",
+          "title": "ContextSwitch",
+          "icon": "./icon.png"
+        }
+      ]
+    },
+    "views": {
+      "contextswitch": [
+        {
+          "id": "sessionView",
+          "name": "Current Session"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p .",

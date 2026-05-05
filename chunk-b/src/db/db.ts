@@ -13,6 +13,8 @@ const requiredEventColumns = [
   { name: "language", type: "TEXT" },
   { name: "project", type: "TEXT" },
   { name: "timestamp", type: "INTEGER" },
+  { name: "diff", type: "TEXT" },
+  { name: "message", type: "TEXT" },
 ];
 
 // Create table if not exists (with all columns)
@@ -23,7 +25,9 @@ db.prepare(`
     filePath TEXT,
     language TEXT,
     project TEXT,
-    timestamp INTEGER
+    timestamp INTEGER,
+    diff TEXT,
+    message TEXT
   )
 `).run();
 

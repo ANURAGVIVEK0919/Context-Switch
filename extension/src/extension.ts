@@ -1,9 +1,8 @@
-
-
 import * as vscode from "vscode";
 import WebSocket from "ws";
 import { execSync } from 'child_process';
 import fetch from 'node-fetch';
+import { SessionViewProvider } from "./SessionViewProvider";
 
 // --- 1. Global WebSocket ---
 let ws: WebSocket;
@@ -38,9 +37,9 @@ export function activate(context: vscode.ExtensionContext) {
     console.log("WS connected");
   };
   // --- 3. FILE CHANGE LISTENER (debounced, deduped, filtered, batched) ---
-  vscode.workspace.onDidChangeTextDocument((event) => {
+  vscode.workspace.onDidChangeTextDocument((event: vscode.TextDocumentChangeEvent) => {
     // Extract diff summary before debouncing
-    const changes = event.contentChanges.map(change => {
+    const changes = event.contentChanges.map((change: vscode.TextDocumentContentChangeEvent) => {
       const line = change.range.start.line;
       let lineText = "";
       try {
@@ -87,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // --- 4. GIT ACTIVITY (ON SAVE, batched) ---
-  vscode.workspace.onDidSaveTextDocument((doc) => {
+  vscode.workspace.onDidSaveTextDocument((doc: vscode.TextDocument) => {
     console.log("File saved:", doc.fileName);
     // Smart file filtering
     if (
@@ -120,11 +119,11 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // --- DIAGNOSTIC ERRORS ---
-  vscode.languages.onDidChangeDiagnostics((e) => {
-      e.uris.forEach(uri => {
+    vscode.languages.onDidChangeDiagnostics((e: vscode.DiagnosticChangeEvent) => {
+      e.uris.forEach((uri: vscode.Uri) => {
           if (uri.fsPath.includes("node_modules")) return;
           const diagnostics = vscode.languages.getDiagnostics(uri);
-          diagnostics.forEach(diag => {
+          diagnostics.forEach((diag: vscode.Diagnostic) => {
               if (diag.severity === vscode.DiagnosticSeverity.Error) {
                   eventQueue.push({
                       type: "diagnostic:error",
@@ -139,8 +138,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // --- TERMINAL COMMANDS ---
-  if ((vscode.window as any).onDidEndTerminalShellExecution) {
-      (vscode.window as any).onDidEndTerminalShellExecution((e: any) => {
+    if ((vscode.window as any).onDidEndTerminalShellExecution) {
+      (vscode.window as any).onDidEndTerminalShellExecution((e: { execution: { commandLine: { value: string } } }) => {
           eventQueue.push({
               type: "terminal:command",
               filePath: "terminal",
@@ -149,7 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
           });
       });
   } else {
-      vscode.window.onDidCloseTerminal((terminal) => {
+      vscode.window.onDidCloseTerminal((terminal: vscode.Terminal) => {
           eventQueue.push({
               type: "terminal:command",
               filePath: "terminal",
@@ -160,7 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // --- FILE OPEN EVENT ---
-  vscode.workspace.onDidOpenTextDocument((doc) => {
+  vscode.workspace.onDidOpenTextDocument((doc: vscode.TextDocument) => {
       if (
           doc.fileName.includes("node_modules") ||
           doc.fileName.includes(".git") ||
@@ -207,7 +206,7 @@ export function activate(context: vscode.ExtensionContext) {
           location: vscode.ProgressLocation.Notification,
           title: "OpenClaw: Analyzing workspace context...",
           cancellable: false
-      }, async (progress) => {
+      }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
           try {
               const response = await fetch(`http://localhost:3001/reconstruct/${projectName}?queryType=handoff`);
               const data = await response.json() as any;
@@ -227,6 +226,12 @@ export function activate(context: vscode.ExtensionContext) {
       });
   });
   context.subscriptions.push(openClawDisposable);
+
+  // Register SessionViewProvider for sidebar
+  const sessionProvider = new SessionViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider("sessionView", sessionProvider)
+  );
 }
 
 
