@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import WebSocket from "ws";
 import { execSync } from 'child_process';
+import fetch from 'node-fetch';
 
 // --- 1. Global WebSocket ---
 let ws: WebSocket;
@@ -97,12 +98,84 @@ export function activate(context: vscode.ExtensionContext) {
     ) {
       return;
     }
+
+    let branch = "unknown";
+    let message = "unknown";
+    try {
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (cwd) {
+            branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd }).toString().trim();
+            message = execSync('git log -1 --pretty=%B', { cwd }).toString().trim();
+        }
+    } catch (e) {}
+
     eventQueue.push({
-      type: "git:activity",
+      type: "git:commit",
       filePath: doc.fileName,
+      message,
+      branch,
       timestamp: Date.now()
     });
-    console.log("Queued git:activity event for", doc.fileName);
+    console.log("Queued git:commit event for", doc.fileName);
+  });
+
+  // --- DIAGNOSTIC ERRORS ---
+  vscode.languages.onDidChangeDiagnostics((e) => {
+      e.uris.forEach(uri => {
+          if (uri.fsPath.includes("node_modules")) return;
+          const diagnostics = vscode.languages.getDiagnostics(uri);
+          diagnostics.forEach(diag => {
+              if (diag.severity === vscode.DiagnosticSeverity.Error) {
+                  eventQueue.push({
+                      type: "diagnostic:error",
+                      filePath: uri.fsPath,
+                      diff: diag.message,
+                      severity: "error",
+                      timestamp: Date.now()
+                  });
+              }
+          });
+      });
+  });
+
+  // --- TERMINAL COMMANDS ---
+  if ((vscode.window as any).onDidEndTerminalShellExecution) {
+      (vscode.window as any).onDidEndTerminalShellExecution((e: any) => {
+          eventQueue.push({
+              type: "terminal:command",
+              filePath: "terminal",
+              diff: e.execution.commandLine.value,
+              timestamp: Date.now()
+          });
+      });
+  } else {
+      vscode.window.onDidCloseTerminal((terminal) => {
+          eventQueue.push({
+              type: "terminal:command",
+              filePath: "terminal",
+              diff: `Terminal closed: ${terminal.name}`,
+              timestamp: Date.now()
+          });
+      });
+  }
+
+  // --- FILE OPEN EVENT ---
+  vscode.workspace.onDidOpenTextDocument((doc) => {
+      if (
+          doc.fileName.includes("node_modules") ||
+          doc.fileName.includes(".git") ||
+          doc.fileName.includes("dist") ||
+          doc.fileName.includes("build")
+      ) {
+          return;
+      }
+      eventQueue.push({
+          type: "file:change",
+          filePath: doc.fileName,
+          language: doc.languageId,
+          diff: "Opened file for reading",
+          timestamp: Date.now()
+      });
   });
 
   // --- 5. BATCH SENDER ---
@@ -119,6 +192,41 @@ export function activate(context: vscode.ExtensionContext) {
       eventQueue = [];
     }
   }, 2000);
+
+  // --- OPENCLAW COMMAND ---
+  let openClawDisposable = vscode.commands.registerCommand('contextswitch.runOpenClaw', async () => {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+          vscode.window.showErrorMessage("No workspace open.");
+          return;
+      }
+      
+      const projectName = workspaceFolders[0].name;
+
+      vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: "OpenClaw: Analyzing workspace context...",
+          cancellable: false
+      }, async (progress) => {
+          try {
+              const response = await fetch(`http://localhost:3001/reconstruct/${projectName}?queryType=handoff`);
+              const data = await response.json() as any;
+
+              const panel = vscode.window.createWebviewPanel(
+                  'openClawView',
+                  'OpenClaw Analysis',
+                  vscode.ViewColumn.Beside,
+                  { enableScripts: true }
+              );
+
+              panel.webview.html = getWebviewContent(data);
+
+          } catch (error) {
+              vscode.window.showErrorMessage("OpenClaw connection failed. Is the backend running?");
+          }
+      });
+  });
+  context.subscriptions.push(openClawDisposable);
 }
 
 
@@ -131,4 +239,39 @@ export function deactivate() {
   } catch (e) {
     // swallow errors — best effort cleanup
   }
+}
+
+// Helper function to generate nice HTML
+function getWebviewContent(data: any) {
+    const nextStepsHtml = data.next_steps 
+        ? data.next_steps.map((step: string) => `<li>${step}</li>`).join('') 
+        : '';
+
+    return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <style>
+                body { font-family: var(--vscode-font-family); padding: 20px; line-height: 1.6; }
+                .confidence { color: var(--vscode-testing-iconPassed); font-weight: bold; }
+                .card { background: var(--vscode-editorWidget-background); padding: 15px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); margin-bottom: 20px; }
+                h2 { color: var(--vscode-textLink-foreground); }
+            </style>
+        </head>
+        <body>
+            <h1>OpenClaw Intelligence</h1>
+            <p class="confidence">Confidence Score: ${data.confidence}%</p>
+            
+            <div class="card">
+                <h2>Context Brief</h2>
+                <p>${data.brief}</p>
+            </div>
+
+            <div class="card">
+                <h2>Recommended Next Steps</h2>
+                <ul>${nextStepsHtml}</ul>
+            </div>
+        </body>
+        </html>
+    `;
 }

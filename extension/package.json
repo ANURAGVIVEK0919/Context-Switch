@@ -26,6 +26,10 @@
       {
         "command": "contextswitch.showContext",
         "title": "Show Context Summary"
+      },
+      {
+        "command": "contextswitch.runOpenClaw",
+        "title": "ContextSwitch: Run OpenClaw"
       }
     ]
   },
