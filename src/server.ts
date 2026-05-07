@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 
@@ -14,6 +15,10 @@ import contextRouter from './routes/context.routes';
 import stalenessRouter from './routes/staleness.routes';
 import braindumpRouter from './routes/braindump.routes';
 import { registerRealtimeClient } from './realtime';
+import { buildContextFromMemory } from './services/memoryService';
+import { aiReason } from './services/aiService';
+import { startTelegramPolling } from './services/telegramInbound';
+import { startScheduler } from './services/telegramScheduler';
 import './websocket/wsServer'; // Start VS Code extension WebSocket listener on port 3002
 
 
@@ -30,12 +35,36 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     next();
 });
 
-// Serve the React frontend from the frontend/dist folder
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// Serve the React frontend build. prefer `frontend-v2/dist`, fall back to `frontend/dist`
+const frontendV2Dist = path.join(__dirname, '../frontend-v2/dist');
+const frontendDist = path.join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendV2Dist)) {
+    app.use(express.static(frontendV2Dist));
+    console.log(`Serving frontend from ${frontendV2Dist}`);
+} else if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    console.log(`Serving frontend from ${frontendDist}`);
+} else {
+    console.log('No frontend build found; running in API-only mode');
+}
 
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: "ok" });
+});
+
+// Ask OpenClaw
+app.post('/ask', async (req, res) => {
+    try {
+        const { projectId, question } = req.body;
+        if (!projectId) return res.status(400).json({ answer: "projectId is required" });
+        const memoryContext = buildContextFromMemory(projectId);
+        const reasoning = await aiReason(memoryContext, question || "Answer the question based on context.");
+        res.json({ answer: reasoning.summary });
+    } catch (err) {
+        console.error("Ask error:", err);
+        res.status(500).json({ answer: "Error connecting to OpenClaw." });
+    }
 });
 
 // Routes
@@ -56,6 +85,12 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', ws => {
     registerRealtimeClient(ws);
 });
+
+// Start Telegram Polling
+startTelegramPolling();
+
+// Start Telegram Proactive Scheduler (daily digest, idle alerts, reminders)
+startScheduler();
 
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

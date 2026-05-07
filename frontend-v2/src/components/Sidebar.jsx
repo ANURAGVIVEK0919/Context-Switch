@@ -1,7 +1,7 @@
 import React, { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Folder, Clock, MessageSquare, Sparkles, BarChart2, Settings, Sun, Moon, Circle } from 'lucide-react';
-import { ThemeContext } from '../App';
+import { ThemeContext } from '../ThemeContext';
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Overview', end: true },

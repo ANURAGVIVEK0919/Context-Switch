@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, ArrowRight, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Plus, ArrowRight, X, Pencil, Trash2, Check, Sparkles, ExternalLink } from 'lucide-react';
 import { useApi } from '../hooks';
-import { getBrainDumps, getAllEvents, createBrainDump, timeAgo } from '../api';
+import { getBrainDumps, getAllEvents, createBrainDump, updateBrainDump, deleteBrainDump, getActiveSessions, timeAgo } from '../api';
 
 const PROJECTS_ALL = 'all';
 const RANGES = ['today', 'week', 'month', 'all'];
@@ -25,9 +26,16 @@ export default function BrainDumps() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [editingDump, setEditingDump] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
+  const navigate = useNavigate();
   const { data: dumpsData, refetch } = useApi(() => getBrainDumps(100));
   const { data: eventsRaw } = useApi(getAllEvents);
+  const { data: activeData } = useApi(getActiveSessions);
+  const currentSession = activeData?.activeProjects?.[0]?.sessions?.[0] || null;
 
   const dumps = dumpsData?.braindumps || [];
   const events = Array.isArray(eventsRaw) ? eventsRaw : [];
@@ -46,12 +54,65 @@ export default function BrainDumps() {
     });
   }, [dumps, projectFilter, rangeFilter, typeFilter, search]);
 
+  function formatReadableDate(ts) {
+    if (!ts) return 'Unknown date';
+    const date = new Date(ts);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = date.toLocaleString(undefined, { month: 'long' });
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  }
+
+  function openEdit(dump) {
+    setEditingDump({ id: dump.id, content: dump.content, session_id: dump.session_id });
+    setExpandedId(dump.id);
+  }
+
+  async function handleSaveEdit() {
+    if (!editingDump?.content?.trim()) return;
+    setSavingEdit(true);
+    try {
+      const sessionId = editingDump.session_id || currentSession?.id || null;
+      await updateBrainDump(editingDump.id, editingDump.content.trim(), sessionId);
+      setToast('Brain dump updated');
+      setEditingDump(null);
+      refetch();
+    } catch (err) {
+      setToast('Error: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+      setTimeout(() => setToast(''), 2500);
+    }
+  }
+
+  async function handleDelete(id) {
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteBrainDump(deleteTarget);
+      setToast('Brain dump deleted');
+      if (editingDump?.id === deleteTarget) setEditingDump(null);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setToast('Error: ' + err.message);
+    } finally {
+      setDeleting(false);
+      setTimeout(() => setToast(''), 2500);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!input.trim()) return;
     setSubmitting(true);
     try {
-      await createBrainDump(input.trim());
+      const sessionId = currentSession?.id || null;
+      await createBrainDump(input.trim(), null, sessionId);
       setInput('');
       setToast('Thought captured!');
       setTimeout(() => setToast(''), 2000);
@@ -174,17 +235,42 @@ export default function BrainDumps() {
                 return (
                   <div
                     key={d.id}
-                    className="group bg-surface-dim border border-outline border-l-2 border-l-primary-container/60 p-5 flex flex-col hover:bg-surface transition-colors relative cursor-pointer"
-                    onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                    className="group bg-surface-dim border border-outline border-l-2 border-l-primary-container/60 p-5 flex flex-col hover:bg-surface transition-colors relative"
                   >
                     <div className="flex justify-between items-start mb-3">
                       <span className="text-[10px] font-mono text-primary-container border border-primary-container/30 px-1.5 py-0.5 uppercase">manual</span>
                       <span className="text-[10px] text-tertiary font-mono">{timeAgo(d.ts)}</span>
                     </div>
 
-                    <p className={`text-sm leading-relaxed text-on-surface mb-4 ${!isExpanded && isLong ? 'line-clamp-3' : ''}`}>
-                      {d.content}
-                    </p>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                        className="text-left flex-1"
+                      >
+                        <p className={`text-sm leading-relaxed text-on-surface mb-1 ${!isExpanded && isLong ? 'line-clamp-3' : ''}`}>
+                          {d.content}
+                        </p>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(d)}
+                          className="p-1.5 border border-outline text-tertiary hover:text-on-surface hover:bg-surface transition-colors"
+                          title="Edit brain dump"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(d.id)}
+                          className="p-1.5 border border-error/30 text-error hover:bg-error/10 transition-colors"
+                          title="Delete brain dump"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
 
                     {isLong && (
                       <span className="text-[10px] font-mono text-tertiary">
@@ -192,10 +278,21 @@ export default function BrainDumps() {
                       </span>
                     )}
 
-                    <div className="mt-auto pt-3 border-t border-outline flex justify-between items-center">
-                      <span className="text-[10px] text-tertiary font-mono">
-                        {new Date(d.ts).toLocaleString()}
-                      </span>
+                    <div className="mt-auto pt-3 border-t border-outline space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-tertiary font-mono">{formatReadableDate(d.ts)}</span>
+                      </div>
+                      {d.session_id ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate('/sessions')}
+                          className="text-[10px] font-mono text-primary-container flex items-center gap-1 hover:text-on-surface transition-colors"
+                        >
+                          <Sparkles size={10} /> Session #{d.session_id}
+                        </button>
+                      ) : (
+                        <div className="text-[10px] font-mono text-tertiary italic">No session linked</div>
+                      )}
                     </div>
                   </div>
                 );
@@ -204,6 +301,91 @@ export default function BrainDumps() {
           )}
         </div>
       </div>
+
+      {editingDump && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setEditingDump(null)}>
+          <div className="w-full max-w-2xl border border-outline bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-outline flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono uppercase tracking-widest text-tertiary">Edit Brain Dump</div>
+                <div className="text-[10px] font-mono text-tertiary mt-1">ID #{editingDump.id}</div>
+              </div>
+              <button type="button" onClick={() => setEditingDump(null)} className="text-tertiary hover:text-on-surface">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {editingDump.session_id && (
+                <div className="text-[10px] font-mono text-tertiary bg-surface-dim border border-outline px-3 py-2">
+                  Session #{editingDump.session_id}
+                </div>
+              )}
+              <textarea
+                value={editingDump.content}
+                onChange={e => setEditingDump({ ...editingDump, content: e.target.value })}
+                rows={9}
+                className="w-full bg-surface-dim border border-outline px-3 py-2 text-sm font-mono text-on-surface focus:border-primary-container focus:outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit || !editingDump.content.trim()}
+                  className="bg-primary-container text-background px-4 py-2 text-xs font-mono uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Check size={13} /> {savingEdit ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingDump(null)}
+                  className="border border-outline text-tertiary px-4 py-2 text-xs font-mono uppercase hover:text-on-surface transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="w-full max-w-md border border-outline bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-outline flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-error/10 border border-error/30 flex items-center justify-center text-error">
+                <Trash2 size={15} />
+              </div>
+              <div>
+                <div className="text-xs font-mono uppercase tracking-widest text-tertiary">Confirm delete</div>
+                <div className="text-sm text-on-surface font-mono mt-1">Delete this brain dump permanently?</div>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-xs font-mono text-tertiary leading-relaxed">
+                This will remove the thought from your history. This action cannot be undone.
+              </p>
+              <div className="mt-5 flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                  className="border border-outline text-tertiary px-4 py-2 text-xs font-mono uppercase hover:text-on-surface transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="bg-error text-background px-4 py-2 text-xs font-mono uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

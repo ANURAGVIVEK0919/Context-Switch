@@ -13,7 +13,9 @@ db.exec(`
     language TEXT,
     project TEXT,
     ts INTEGER,
-    diff TEXT
+    diff TEXT,
+    severity TEXT,
+    source TEXT DEFAULT 'human'
   );
 
   CREATE TABLE IF NOT EXISTS braindumps (
@@ -79,6 +81,26 @@ if (!sessionColumns.includes('ai_summary')) {
 if (!existingColumns.includes('severity')) {
   db.prepare(`ALTER TABLE events ADD COLUMN severity TEXT;`).run();
   console.log(`Migrated: Added column 'severity' to events table.`);
+}
+
+// Migration: Add source column to events table for AI vs Human tracking
+if (!existingColumns.includes('source')) {
+  db.prepare(`ALTER TABLE events ADD COLUMN source TEXT DEFAULT 'human';`).run();
+  console.log(`Migrated: Added column 'source' to events table.`);
+}
+
+// Migration: Add session_id column to braindumps table
+const braindumpTableInfo = db.prepare('PRAGMA table_info(braindumps);').all();
+const braindumpColumns = (braindumpTableInfo as { name: string }[]).map(col => col.name);
+if (!braindumpColumns.includes('session_id')) {
+  db.prepare(`ALTER TABLE braindumps ADD COLUMN session_id INTEGER;`).run();
+  console.log(`Migrated: Added column 'session_id' to braindumps table.`);
+}
+
+// Migration: Add tags column to sessions table
+if (!sessionColumns.includes('tags')) {
+  db.prepare(`ALTER TABLE sessions ADD COLUMN tags TEXT DEFAULT NULL;`).run();
+  console.log(`Migrated: Added column 'tags' to sessions table.`);
 }
 
 console.log("Database schema ready ✅");

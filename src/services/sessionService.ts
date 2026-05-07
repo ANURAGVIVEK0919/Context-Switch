@@ -1,4 +1,5 @@
 import db from '../db';
+import { sendTelegramMessage } from './telegramService';
 
 export interface Session {
     id: number;
@@ -19,6 +20,9 @@ export function startSession(project: string = 'default'): { sessionId: number; 
     const startTs = Date.now();
     const stmt = db.prepare(`INSERT INTO sessions (project, start_ts, status) VALUES (?, ?, 'active')`);
     const info = stmt.run(project, startTs);
+    
+    sendTelegramMessage(`🚀 <b>Session Started</b>\nProject: <i>${project}</i>\nSession ID: ${info.lastInsertRowid}`);
+    
     return { sessionId: info.lastInsertRowid as number, project, startTs, existing: false };
 }
 
@@ -34,22 +38,24 @@ export function endSession(sessionId: number): { sessionId: number; summary: str
     const endTs = Date.now();
     const duration = Math.floor((endTs - session.start_ts) / 1000);
     
-    // Generate summary
-    const eventsCountRow = db.prepare(`SELECT COUNT(*) as count FROM events WHERE ts >= ? AND ts <= ?`).get(session.start_ts, endTs) as any;
+    // Use broadened query to catch events stored under 'unknown' project
+    const eventsCountRow = db.prepare(`SELECT COUNT(*) as count FROM events WHERE (project = ? OR project = 'unknown') AND ts >= ? AND ts <= ?`).get(session.project, session.start_ts, endTs) as any;
     const eventsCount = eventsCountRow ? eventsCountRow.count : 0;
     
-    const files = db.prepare(`SELECT DISTINCT filePath FROM events WHERE ts >= ? AND ts <= ? AND filePath IS NOT NULL`).all(session.start_ts, endTs) as {filePath: string}[];
-    const uniqueFiles = files.map(f => f.filePath).join(', ');
-    const summary = `${eventsCount} events captured. Files touched: ${uniqueFiles || 'none'}`;
+    const files = db.prepare(`SELECT DISTINCT filePath FROM events WHERE (project = ? OR project = 'unknown') AND ts >= ? AND ts <= ? AND filePath IS NOT NULL`).all(session.project, session.start_ts, endTs) as {filePath: string}[];
+    const uniqueFileCount = files.length;
+    const summary = `${eventsCount} events captured across ${uniqueFileCount} file${uniqueFileCount !== 1 ? 's' : ''}.`;
 
     const stmt = db.prepare(`UPDATE sessions SET end_ts = ?, status = 'ended', summary = ? WHERE id = ?`);
     stmt.run(endTs, summary, sessionId);
 
+    sendTelegramMessage(`🛑 <b>Session Ended</b>\nProject: <i>${session.project}</i>\nDuration: ${Math.floor(duration/60)}m\n${eventsCount} events, ${uniqueFileCount} files touched.\n\nGenerating AI Summary...`);
+
     return { sessionId, summary, duration };
 }
 
-export function getCurrentSession(): { id: number; project: string; start_ts: number } | null {
-    const session = db.prepare(`SELECT id, project, start_ts FROM sessions WHERE status = 'active' ORDER BY start_ts DESC LIMIT 1`).get() as any;
+export function getCurrentSession(): Session | null {
+    const session = db.prepare(`SELECT * FROM sessions WHERE status = 'active' ORDER BY start_ts DESC LIMIT 1`).get() as Session | undefined;
     return session || null;
 }
 
@@ -97,9 +103,11 @@ export function buildSessionContext(sessionId: number): string {
     const durationMins = Math.floor((endTs - session.start_ts) / 60000);
 
     // All events during the session window
+    // Broadened query: catches events stored under 'unknown' project (extension version mismatch)
     const allEvents = db.prepare(`
-        SELECT type, filePath, language, diff, severity, ts FROM events
-        WHERE project = ? AND ts >= ? AND ts <= ?
+        SELECT type, filePath, language, diff, severity, source, ts FROM events
+        WHERE (project = ? OR project IS NULL OR project = 'unknown')
+          AND ts >= ? AND ts <= ?
         ORDER BY ts ASC
     `).all(session.project, session.start_ts, endTs) as any[];
 
@@ -127,6 +135,9 @@ export function buildSessionContext(sessionId: number): string {
     // Unique files touched
     const uniqueFiles = [...new Set(allEvents.map(e => e.filePath).filter(Boolean))];
 
+    // Separate AI vs Human edits - REMOVED, now just counts
+    const fileSaves = fileChanges;
+
     const formatTs = (ts: number) => new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
     const context = `
@@ -136,9 +147,9 @@ Duration: ${durationMins} minutes (${formatTs(session.start_ts)} → ${formatTs(
 Total Events: ${allEvents.length}
 Unique Files Touched: ${uniqueFiles.length}
 
-=== FILES EDITED (${fileChanges.length} changes) ===
-${fileChanges.length > 0
-    ? fileChanges.map(e => `  [${formatTs(e.ts)}] ${e.filePath}${e.language ? ` (${e.language})` : ''}: ${e.diff || 'modified'}`).join('\n')
+=== FILES EDITED (${fileSaves.length} changes) ===
+${fileSaves.length > 0
+    ? fileSaves.map(e => `  [${formatTs(e.ts)}] ${e.filePath}${e.language ? ` (${e.language})` : ''}: ${e.diff || 'modified'}`).join('\n')
     : '  None'}
 
 === GIT COMMITS (${gitCommits.length}) ===
@@ -176,4 +187,31 @@ ${uniqueFiles.map(f => `  - ${f}`).join('\n') || '  None'}
     `.trim();
 
     return context;
+}
+
+export function updateSession(
+    sessionId: number,
+    fields: { summary?: string; project?: string; status?: string; ai_summary?: string; end_ts?: number }
+): Session {
+    const existing = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as Session | undefined;
+    if (!existing) throw new Error('Session not found');
+
+    db.prepare(`
+        UPDATE sessions SET
+          summary    = COALESCE(?, summary),
+          project    = COALESCE(?, project),
+          status     = COALESCE(?, status),
+          ai_summary = COALESCE(?, ai_summary),
+          end_ts     = COALESCE(?, end_ts)
+        WHERE id = ?
+    `).run(
+        fields.summary    ?? null,
+        fields.project    ?? null,
+        fields.status     ?? null,
+        fields.ai_summary ?? null,
+        fields.end_ts     ?? null,
+        sessionId
+    );
+
+    return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId) as Session;
 }

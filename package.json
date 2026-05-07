@@ -4,7 +4,7 @@
   "main": "dist/server.js",
   "scripts": {
     "start": "node dist/server.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --ignore \"frontend-v2/*,extension/*\" src/server.ts",
     "build": "tsc",
     "ws": "ts-node src/websocket/wsServer.ts",
     "test:integration": "node test/integrationTest.js"

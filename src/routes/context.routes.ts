@@ -96,4 +96,71 @@ router.get("/enhanced", async (req: Request, res: Response) => {
   }
 });
 
+// ── Events CRUD ───────────────────────────────────────────────────────────────
+
+// GET /context/events/:id — fetch a single event
+router.get("/events/:id", (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
+    const row = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    if (!row) return res.status(404).json({ success: false, error: "Event not found" });
+    res.json({ success: true, data: row });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /context/events/:id — update event fields
+router.put("/events/:id", (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
+    const existing = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    if (!existing) return res.status(404).json({ success: false, error: "Event not found" });
+    const { type, filePath, language, project, diff } = req.body;
+    db.prepare(`
+      UPDATE events SET
+        type     = COALESCE(?, type),
+        filePath = COALESCE(?, filePath),
+        language = COALESCE(?, language),
+        project  = COALESCE(?, project),
+        diff     = COALESCE(?, diff)
+      WHERE id = ?
+    `).run(type ?? null, filePath ?? null, language ?? null, project ?? null, diff ?? null, id);
+    const updated = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /context/events/:id — delete a single event
+router.delete("/events/:id", (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
+    const existing = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    if (!existing) return res.status(404).json({ success: false, error: "Event not found" });
+    db.prepare(`DELETE FROM events WHERE id = ?`).run(id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /context/events — bulk delete events by IDs array
+router.delete("/events", (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ success: false, error: "ids array required" });
+    const placeholders = ids.map(() => "?").join(",");
+    const result = db.prepare(`DELETE FROM events WHERE id IN (${placeholders})`).run(...ids) as any;
+    res.json({ success: true, deleted: result.changes });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;

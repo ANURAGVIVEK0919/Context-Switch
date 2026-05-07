@@ -31,12 +31,38 @@ export const endSession = (sessionId) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId }),
   });
+// CRUD
+export const getSession = (id) => req(`/session/${id}`);
+export const updateSession = (id, fields) =>
+  req(`/session/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+export const deleteSession = (id) => req(`/session/${id}`, { method: 'DELETE' });
+export const regenerateSessionSummary = (id) =>
+  req(`/session/${id}/regenerate-summary`, { method: 'POST' });
 
 // ── Events / Context ─────────────────────────────────────────
 export const getAllEvents = () => req('/context/events');
 export const getEnhancedContext = (project = 'default') =>
   req(`/context/enhanced?project=${encodeURIComponent(project)}`);
 export const getAllEnhancedEvents = () => req('/context/enhanced');
+// CRUD
+export const getEvent = (id) => req(`/context/events/${id}`);
+export const updateEvent = (id, fields) =>
+  req(`/context/events/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+export const deleteEvent = (id) => req(`/context/events/${id}`, { method: 'DELETE' });
+export const bulkDeleteEvents = (ids) =>
+  req('/context/events', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
 
 // ── Brain Dumps ───────────────────────────────────────────────
 export const getBrainDumps = (limit = 50) => req(`/braindump?limit=${limit}`);
@@ -46,6 +72,48 @@ export const createBrainDump = (content, project, sessionId) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, project, sessionId }),
   });
+// CRUD
+export const getBrainDump = (id) => req(`/braindump/${id}`);
+export const updateBrainDump = (id, content, sessionId) =>
+  req(`/braindump/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, session_id: sessionId || null }),
+  });
+export const deleteBrainDump = (id) => req(`/braindump/${id}`, { method: 'DELETE' });
+export const getBrainDumpsBySession = (sessionId) => req(`/braindump/session/${sessionId}`);
+
+// ── Memory Nodes ──────────────────────────────────────────────
+export const queryMemory = (project = 'default', limit = 20) =>
+  req(`/memory/query?project=${encodeURIComponent(project)}&limit=${limit}`);
+// CRUD
+export const getMemoryNode = (id) => req(`/memory/${id}`);
+export const createMemoryNode = (fields) =>
+  req('/memory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+export const updateMemoryNode = (id, fields) =>
+  req(`/memory/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+export const deleteMemoryNode = (id) => req(`/memory/${id}`, { method: 'DELETE' });
+
+// ── Staleness ─────────────────────────────────────────────────
+export const getAllStaleness = () => req('/staleness');
+export const getStalenessForFile = (filePath) =>
+  req(`/staleness/${encodeURIComponent(filePath)}`);
+export const updateStaleness = (filePath, fields) =>
+  req(`/staleness/${encodeURIComponent(filePath)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+export const deleteStaleness = (filePath) =>
+  req(`/staleness/${encodeURIComponent(filePath)}`, { method: 'DELETE' });
 
 // ── AI Reconstruct ────────────────────────────────────────────
 export const reconstructProject = (projectId, queryType = 'context') => {

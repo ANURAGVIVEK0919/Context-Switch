@@ -1,10 +1,49 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronDown, Search, ChevronRight, FileCode, ArrowRight, Brain, Sparkles } from 'lucide-react';
+import { ChevronDown, Search, ChevronRight, FileCode, ArrowRight, Brain, Sparkles, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { useApi } from '../hooks';
 import useWebSocket from '../hooks/useWebSocket';
 import InfoTooltip from '../components/InfoTooltip';
-import { getSessionHistory, getActiveSessions, getSessionEvents, startSession, endSession, timeAgo, formatDuration, groupByFile, formatEventTime } from '../api';
+import { getSessionHistory, getActiveSessions, getSessionEvents, startSession, endSession, timeAgo, formatDuration, groupByFile, formatEventTime, updateSession, deleteSession, regenerateSessionSummary, getBrainDumpsBySession } from '../api';
+
+function ConfirmDialog({ open, title, message, confirmLabel = 'Delete', cancelLabel = 'Cancel', danger = true, onConfirm, onCancel, confirming = false }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={onCancel}>
+      <div className="w-full max-w-md border border-outline bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-outline flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-full ${danger ? 'bg-error/10 border border-error/30 text-error' : 'bg-primary-container/10 border border-primary-container/30 text-primary-container'} flex items-center justify-center`}>
+            {danger ? <Trash2 size={15} /> : <Sparkles size={15} />}
+          </div>
+          <div>
+            <div className="text-xs font-mono uppercase tracking-widest text-tertiary">{title}</div>
+            <div className="text-sm text-on-surface font-mono mt-1">{message}</div>
+          </div>
+        </div>
+        <div className="p-5">
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={confirming}
+              className="border border-outline text-tertiary px-4 py-2 text-xs font-mono uppercase hover:text-on-surface transition-colors disabled:opacity-50"
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={confirming}
+              className={`${danger ? 'bg-error text-background' : 'bg-primary-container text-background'} px-4 py-2 text-xs font-mono uppercase font-bold hover:opacity-90 transition-opacity disabled:opacity-50`}
+            >
+              {confirming ? 'Working…' : confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Sessions() {
   const location = useLocation();
@@ -18,9 +57,17 @@ export default function Sessions() {
   const [ending, setEnding] = useState(false);
   const [newProject, setNewProject] = useState('');
   const [showStartModal, setShowStartModal] = useState(false);
+  const [showEditModal, setShowEditModal]   = useState(false);
+  const [editTarget, setEditTarget]         = useState(null);
+  const [editForm, setEditForm]             = useState({});
+  const [saving, setSaving]                 = useState(false);
+  const [deleting, setDeleting]             = useState(false);
+  const [regenerating, setRegenerating]     = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { data: historyData, refetch: refetchHistory } = useApi(() => getSessionHistory(50));
   const { data: activeData, refetch: refetchActive } = useApi(getActiveSessions);
+  const { data: brainDumpsData } = useApi(() => selectedId ? getBrainDumpsBySession(selectedId) : null);
 
   const allSessions = historyData?.sessions || [];
   const activeProjects = activeData?.activeProjects || [];
@@ -73,6 +120,28 @@ export default function Sessions() {
     }
     return m;
   }, [activeGroups]);
+
+  function toDateTimeLocalInput(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function formatReadableDateTime(value) {
+    if (!value) return 'Not set';
+    try {
+      return new Date(value).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return 'Invalid date';
+    }
+  }
 
   const visibleSessions = useMemo(() => {
     return filtered.filter(s => s.status !== 'active');
@@ -135,6 +204,82 @@ export default function Sessions() {
       alert('Failed to end session: ' + err.message);
     } finally {
       setEnding(false);
+    }
+  }
+
+  function openEdit(session) {
+    setEditTarget(session.id);
+    const prettyAi = (() => {
+      try { return session.ai_summary ? JSON.parse(session.ai_summary) : null; } catch { return null; }
+    })();
+    setEditForm({
+      id: session.id,
+      project: session.project || '',
+      summary: session.summary || '',
+      ai_summary: prettyAi ? JSON.stringify(prettyAi, null, 2) : session.ai_summary || '',
+      end_ts: session.end_ts || null,
+    });
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    if (!editTarget) return;
+    setSaving(true);
+    try {
+      let aiPayload = null;
+      try { aiPayload = editForm.ai_summary ? JSON.parse(editForm.ai_summary) : null; } catch (err) { /* keep as raw string */ }
+      const payload = {
+        project: editForm.project,
+        summary: editForm.summary,
+        ai_summary: aiPayload ? JSON.stringify(aiPayload) : (editForm.ai_summary || null),
+        end_ts: editForm.end_ts || null,
+      };
+      await updateSession(editTarget, payload);
+      setShowEditModal(false);
+      setEditTarget(null);
+      await refetchHistory();
+      await refetchActive();
+    } catch (err) {
+      alert('Failed to save session: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(sessionId) {
+    setSelectedId(sessionId);
+    setShowDeleteConfirm(true);
+  }
+
+  async function confirmDeleteSession() {
+    if (!selectedId) return;
+    setDeleting(true);
+    try {
+      await deleteSession(selectedId);
+      await refetchHistory();
+      await refetchActive();
+      setSelectedId(null);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      alert('Failed to delete session: ' + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleRegenerate(sessionId) {
+    if (!window.confirm('Regenerate AI summary for this session?')) return;
+    setRegenerating(true);
+    try {
+      await regenerateSessionSummary(sessionId);
+      await refetchHistory();
+      await refetchActive();
+      refetchSessionEvents();
+    } catch (err) {
+      alert('Failed to regenerate summary: ' + err.message);
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -293,21 +438,112 @@ export default function Sessions() {
                   </h2>
                   {selected.summary && <p className="text-xs text-tertiary font-mono mt-1">{selected.summary}</p>}
                 </div>
-                <div className="flex gap-5 text-right">
-                  <div>
-                    <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Duration</div>
-                    <div className="text-lg font-mono">{selected.status === 'active' ? 'ongoing' : formatDuration(selected.end_ts - selected.start_ts)}</div>
+                <div className="flex flex-col items-end gap-3 text-right">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEdit(selected)}
+                      className="text-xs font-mono border border-outline/40 px-3 py-1 flex items-center gap-2 hover:bg-surface transition-colors"
+                    >
+                      <Pencil size={13} /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleRegenerate(selected.id)}
+                      disabled={regenerating}
+                      className="text-xs font-mono border border-outline/40 px-3 py-1 flex items-center gap-2 hover:bg-surface transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw size={13} /> {regenerating ? 'Regenerating…' : 'Regenerate AI Summary'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(selected.id)}
+                      disabled={deleting}
+                      className="text-xs font-mono text-error border border-error/30 px-3 py-1 flex items-center gap-2 hover:bg-error/10 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
                   </div>
-                  <div>
-                    <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Events</div>
-                    <div className="text-lg font-mono">{sessionEvents.length}</div>
-                  </div>
-                  <div>
-                    <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Files</div>
-                    <div className="text-lg font-mono">{fileGroups.length}</div>
+
+                  <div className="flex gap-5">
+                    <div>
+
+                    <ConfirmDialog
+                      open={showDeleteConfirm}
+                      title="Confirm delete"
+                      message={`Delete session #${selected?.id || selectedId} and all associated events?`}
+                      confirmLabel="Delete"
+                      cancelLabel="Cancel"
+                      danger
+                      confirming={deleting}
+                      onCancel={() => setShowDeleteConfirm(false)}
+                      onConfirm={confirmDeleteSession}
+                    />
+                      <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Duration</div>
+                      <div className="text-lg font-mono">{selected.status === 'active' ? 'ongoing' : formatDuration(selected.end_ts - selected.start_ts)}</div>
+                    </div>
+                    <div>
+                      <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Events</div>
+                      <div className="text-lg font-mono">{sessionEvents.length}</div>
+                    </div>
+                    <div>
+                      <div className="font-label-mono-xs text-tertiary uppercase tracking-widest mb-0.5">Files</div>
+                      <div className="text-lg font-mono">{fileGroups.length}</div>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {showEditModal && selected && (
+                <div className="mt-4 border border-outline bg-surface-dim p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="font-label-mono-xs text-tertiary uppercase tracking-widest">Inline Session Editor</div>
+                      <div className="text-[10px] font-mono text-tertiary mt-1">
+                        Editing in place on the session details panel.
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-mono text-tertiary">
+                      Started {formatReadableDateTime(selected.start_ts)}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveEdit} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs text-tertiary font-mono">Project</label>
+                        <input value={editForm.project} onChange={e => setEditForm({...editForm, project: e.target.value})} className="w-full bg-surface border border-outline px-3 py-2 text-sm font-mono text-on-surface placeholder:text-tertiary focus:border-primary-container focus:outline-none mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-tertiary font-mono">End timestamp</label>
+                        <input
+                          type="datetime-local"
+                          value={toDateTimeLocalInput(editForm.end_ts)}
+                          onChange={e => setEditForm({...editForm, end_ts: e.target.value ? new Date(e.target.value).getTime() : null})}
+                          className="w-full bg-surface border border-outline px-3 py-2 text-sm font-mono text-on-surface placeholder:text-tertiary focus:border-primary-container focus:outline-none mt-1"
+                        />
+                        <div className="mt-1 text-[10px] font-mono text-tertiary">
+                          {formatReadableDateTime(editForm.end_ts)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-tertiary font-mono">Human Summary</label>
+                      <textarea value={editForm.summary} onChange={e => setEditForm({...editForm, summary: e.target.value})} rows={4} className="w-full bg-surface border border-outline px-3 py-2 text-sm font-mono text-on-surface placeholder:text-tertiary focus:border-primary-container focus:outline-none mt-1" />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-tertiary font-mono">AI Summary (JSON or plain text)</label>
+                      <textarea value={editForm.ai_summary} onChange={e => setEditForm({...editForm, ai_summary: e.target.value})} rows={8} className="w-full bg-surface border border-outline px-3 py-2 text-sm font-mono text-on-surface placeholder:text-tertiary focus:border-primary-container focus:outline-none mt-1" />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={saving} className="bg-primary-container text-background py-2 text-xs font-mono uppercase px-4 hover:opacity-90 transition-opacity disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+                      <button type="button" onClick={() => setShowEditModal(false)} className="border border-outline text-tertiary px-4 py-2 text-xs font-mono uppercase hover:text-on-surface transition-colors">Cancel</button>
+                      <button type="button" onClick={() => handleRegenerate(editForm.id)} disabled={regenerating} className="ml-auto text-xs font-mono border border-outline/40 px-3 py-2 flex items-center gap-2 hover:bg-surface transition-colors disabled:opacity-50"><RefreshCw size={13} /> {regenerating ? 'Regenerating…' : 'Regenerate AI Summary'}</button>
+                      <button type="button" onClick={() => handleDelete(editForm.id)} disabled={deleting} className="text-xs font-mono text-error border border-error/30 px-3 py-2 flex items-center gap-2 hover:bg-error/10 transition-colors disabled:opacity-50"><Trash2 size={13} /> {deleting ? 'Deleting…' : 'Delete'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
 
               {/* AI Session Summary Panel */}
               {(() => {
@@ -350,6 +586,28 @@ export default function Sessions() {
                         ))}
                       </div>
                     )}
+                  </div>
+                );
+              })()}
+
+              {/* Brain Dumps */}
+              {(() => {
+                const dumps = brainDumpsData?.braindumps || [];
+                if (dumps.length === 0) return null;
+                return (
+                  <div className="mt-4 border border-outline bg-surface-dim p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Brain size={13} className="text-tertiary" />
+                      <span className="font-label-mono-xs text-tertiary uppercase tracking-widest">Brain Dumps ({dumps.length})</span>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {dumps.map(dump => (
+                        <div key={dump.id} className="border border-outline/30 bg-surface p-2 text-xs font-mono text-on-surface/80 hover:text-on-surface transition-colors">
+                          <div className="line-clamp-2">{dump.content}</div>
+                          <div className="text-[9px] text-tertiary mt-1">{formatEventTime(dump.ts)}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
@@ -462,6 +720,7 @@ export default function Sessions() {
           </form>
         </div>
       )}
+
     </div>
   );
 }

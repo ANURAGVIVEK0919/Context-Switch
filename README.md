@@ -30,6 +30,27 @@ The project is organized as a monorepo:
 
 ---
 
+## 🚦 Current Status & Roadmap
+
+### 🚧 What's Working
+- **Backend & Event Ingestion**: Robust Node.js architecture capturing real-time coding events via REST and WebSockets.
+- **Dashboard**: React/Vite-based web application successfully rendering live sessions and AI summaries.
+- **Telegram Heartbeat**: Scheduled and interactive bot providing project summaries and watchdog alerts.
+- **Context Scoping**: Backend correctly scopes data fetching to the active project workspace.
+
+### 🛑 Known Issues
+- **VS Code Extension Panel**: Currently experiencing a rendering blocker where the sidebar gets stuck on "Connecting...". Potential causes related to VS Code Webview CSP, script execution blocks, or extension caching are actively being investigated.
+
+### 🗺️ Planned Next Steps
+- **User Authentication**: Implement login systems to manage multi-user data securely.
+- **AI Enhancement**: Improve the accuracy and formatting of OpenClaw results and AI summaries.
+- **Testing Coverage**: Add unit and integration tests for stability.
+- **Marketplace Launch**: Prepare the VS Code extension for public release on the marketplace (publisher info, polished usage guide).
+- **Cloud Deployment**: Host the backend, database, and WebSocket servers on Render for public accessibility.
+- **Multi-user Telegram Bot**: Upgrade the bot architecture to dynamically handle multiple users via individual `/start` chat IDs.
+
+---
+
 ## 🛠️ Prerequisites
 
 - **Node.js**: `v18.x` or higher
