@@ -23,6 +23,10 @@ export default function useWebSocket(url, onMessage) {
       socket.onopen = () => {
         if (closed) return;
         setIsConnected(true);
+        const token = localStorage.getItem('token');
+        if (token) {
+          socket.send(JSON.stringify({ type: 'auth', token }));
+        }
       };
 
       socket.onmessage = event => {

@@ -1,21 +1,23 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import db from "../db";
 import { saveMemoryNode } from "../services/memoryService";
+import { authMiddleware, AuthRequest } from "../middleware/auth.middleware";
 
 const router = Router();
 
 // GET /braindump?limit=20&project=xxx
-router.get("/", (req, res) => {
+router.get("/", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
-    const limit = req.query.limit ? Math.min(Number(req.query.limit), 100) : 20;
-    const project = req.query.project as string | undefined;
+    const limit = authReq.query.limit ? Math.min(Number(authReq.query.limit), 100) : 20;
+    const project = authReq.query.project as string | undefined;
+    const userId = authReq.user?.id;
 
     let rows;
     if (project) {
-      // braindumps table doesn't have project yet — join via sessions is complex, just return all for now
-      rows = db.prepare(`SELECT * FROM braindumps ORDER BY ts DESC LIMIT ?`).all(limit);
+      rows = db.prepare(`SELECT * FROM braindumps WHERE user_id = ? AND project = ? ORDER BY ts DESC LIMIT ?`).all(userId, project, limit);
     } else {
-      rows = db.prepare(`SELECT * FROM braindumps ORDER BY ts DESC LIMIT ?`).all(limit);
+      rows = db.prepare(`SELECT * FROM braindumps WHERE user_id = ? ORDER BY ts DESC LIMIT ?`).all(userId, limit);
     }
     return res.json({ success: true, braindumps: rows, count: rows.length });
   } catch (err) {
@@ -36,8 +38,10 @@ router.get("/session/:sessionId", (req, res) => {
 });
 
 // POST /braindump
-router.post("/", (req, res) => {
-  const { content, sessionId, project } = req.body;
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
+  const { content, sessionId, project } = authReq.body;
+  const userId = authReq.user?.id;
 
   if (!content || typeof content !== "string" || content.trim() === "") {
     return res.status(400).json({ error: "Content required" });
@@ -45,10 +49,19 @@ router.post("/", (req, res) => {
 
   const timestamp = Date.now();
   try {
-    db.prepare("INSERT INTO braindumps (content, ts, session_id) VALUES (?, ?, ?)").run(content.trim(), timestamp, sessionId || null);
-    saveMemoryNode(content, "braindump", project || "default", sessionId);
+    const info = db.prepare("INSERT INTO braindumps (content, ts, session_id, user_id, project) VALUES (?, ?, ?, ?, ?)").run(content.trim(), timestamp, sessionId || null, userId, project || null);
+    const dumpId = info.lastInsertRowid as number;
+    
+    // Save to memory nodes and trigger vector embedding
+    await saveMemoryNode(content, "braindump", project || "default", userId!, sessionId);
+    
+    // Also store embedding directly for the braindump itself
+    const { storeEmbedding } = require("../services/embeddingService");
+    storeEmbedding(dumpId, 'braindump', content, userId!);
+
     return res.json({ success: true, ts: timestamp });
   } catch (err) {
+    console.error("Braindump save error:", err);
     return res.status(500).json({ error: "DB error" });
   }
 });

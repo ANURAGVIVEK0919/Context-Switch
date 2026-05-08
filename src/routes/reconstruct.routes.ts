@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import db from '../db';
 import { aiReason } from '../services/aiService';
+import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
+import { getAllScores } from '../services/stalenessService';
+import { buildContextFromMemory } from '../services/memoryService';
 
 const router = Router();
 
@@ -99,49 +102,59 @@ TONE: Engineering log. Factual, specific, direct. Reference real file names, rea
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
-async function handleReconstruct(req: Request, res: Response) {
+async function handleReconstruct(req: AuthRequest, res: Response) {
     try {
         const { projectId } = req.params;
+        const userId = req.user?.id;
         const queryType = typeof req.body?.queryType === 'string'
             ? req.body.queryType
             : (req.query.queryType as string) || 'context';
+        
         const systemPrompt = SYSTEM_PROMPTS[queryType] || SYSTEM_PROMPTS.context;
 
-        // 1. Fetch memory nodes for this project
+        // 1. Fetch memory nodes (last 10)
         const memoryNodes = db.prepare(`
             SELECT * FROM memory_nodes
-            WHERE project = ? OR project IS NULL
-            ORDER BY ts DESC
-            LIMIT 10
-        `).all(projectId) as any[];
+            WHERE (project = ? OR project IS NULL) 
+            AND (user_id = ? OR project IN (SELECT project FROM project_members WHERE user_id = ?))
+            ORDER BY ts DESC LIMIT 10
+        `).all(projectId, userId, userId) as any[];
 
-        // 2. Fetch last 15 events — more context = better AI
+        // 2. Fetch last 50 events for rich context
         const recentEvents = db.prepare(`
-            SELECT type, filePath, language, diff, severity, ts FROM events
-            WHERE project = ?
-            ORDER BY ts DESC
-            LIMIT 15
-        `).all(projectId) as any[];
+            SELECT type, filePath, language, diff, severity, ts, user_id FROM events
+            WHERE project = ? 
+            AND (user_id = ? OR project IN (SELECT project FROM project_members WHERE user_id = ?))
+            ORDER BY ts DESC LIMIT 50
+        `).all(projectId, userId, userId) as any[];
 
-        // 3. Fetch enhanced context (braindumps + staleness from context route)
-        const contextRes = await fetch(`http://localhost:3001/context/enhanced?project=${projectId}`);
-        if (!contextRes.ok) {
-            throw new Error(`Context query failed with status: ${contextRes.status}`);
-        }
-        const contextData: any = await contextRes.json();
+        // 3. Fetch braindumps directly (replacing internal HTTP fetch)
+        const braindumps = db.prepare(`
+            SELECT content, ts, user_id FROM braindumps 
+            WHERE project = ? 
+            AND (user_id = ? OR project IN (SELECT project FROM project_members WHERE user_id = ?))
+            ORDER BY ts DESC LIMIT 10
+        `).all(projectId, userId, userId) as any[];
 
-        // 4. Build rich context string for the AI
-        const braindumps = (contextData.braindumps || [])
-            .slice(-5)
+        const { findSimilarContent } = require('../services/embeddingService');
+        const similarNodes = await findSimilarContent(projectId, userId!, 5);
+
+        const stalenessScores = getAllScores().slice(0, 10);
+
+        // 4. Build context string
+        const similarStr = similarNodes
+            .map((s: any) => `  [Semantic Memory] (${s.content_type}): ${s.content?.content || 'Unknown'}`)
+            .join('\n');
+
+        const braindumpStr = braindumps
             .map((b: any) => `  [${new Date(b.ts).toLocaleTimeString()}] "${b.content}"`)
             .join('\n');
 
         const memoryStr = memoryNodes
-            .slice(0, 5)
             .map((n: any) => `  [${n.type || 'snapshot'}] ${n.content}`)
             .join('\n');
 
-        const fileChanges = recentEvents.filter(e => e.type === 'file:change');
+        const fileChanges = recentEvents.filter(e => e.type === 'file:change' || e.type === 'file:save');
         const gitCommits = recentEvents.filter(e => e.type === 'git:commit');
         const errors = recentEvents.filter(e => e.type === 'diagnostic:error');
 
@@ -157,34 +170,37 @@ async function handleReconstruct(req: Request, res: Response) {
             .map((e: any) => `  [${e.severity?.toUpperCase() || 'ERROR'}] ${e.filePath}: ${e.diff}`)
             .join('\n');
 
-        const stalenessScores = (contextData.stalenessScores || []).slice(0, 5);
         const staleStr = stalenessScores
             .map((f: any) => `  ${f.filePath} (score: ${Math.round(f.score)}, edits: ${f.edit_count || '?'})`)
             .join('\n');
 
         const contextString = `
 PROJECT: ${projectId}
+TIMESTAMP: ${new Date().toLocaleString()}
 
-MEMORY NODES (recent auto-snapshots):
-${memoryStr || '  None captured'}
-
-RECENT FILE CHANGES (${fileChanges.length}):
+RECENT ACTIVITY (Last 50 Events):
 ${fileChangeStr || '  None'}
 
-GIT COMMITS (${gitCommits.length}):
+GIT ACTIVITY:
 ${commitStr || '  None'}
 
-ERRORS / DIAGNOSTICS (${errors.length}):
-${errorStr || '  None — no errors detected'}
+ERRORS DETECTED:
+${errorStr || '  None'}
 
-DEVELOPER BRAIN DUMPS (${(contextData.braindumps || []).length}):
-${braindumps || '  None — no notes logged this session'}
+DEVELOPER NOTES (Braindumps):
+${braindumpStr || '  None'}
 
-STALE FILES (most at-risk):
-${staleStr || '  No staleness data yet'}
+SYSTEM MEMORY SNAPSHOTS:
+${memoryStr || '  None'}
+
+SEMANTIC MEMORY (Long-term recall):
+${similarStr || '  None'}
+
+STALE FILES (Potential maintenance):
+${staleStr}
         `.trim();
 
-        const aiData = await aiReason(contextString, 'Produce the requested synthesis using ONLY the context data provided above.', systemPrompt);
+        const aiData = await aiReason(contextString, 'Perform a high-fidelity session reconstruction/handoff using the provided context.', systemPrompt);
 
         res.status(200).json({
             projectId,
@@ -192,29 +208,23 @@ ${staleStr || '  No staleness data yet'}
             brief: aiData.summary,
             confidence: aiData.confidence,
             next_steps: aiData.next_steps || [],
-            // Pass through all rich fields the AI returns
-            current_hypothesis: (aiData as any).current_hypothesis || null,
-            key_files: (aiData as any).key_files || [],
-            blockers: (aiData as any).blockers || [],
-            project_state: (aiData as any).project_state || null,
-            open_threads: (aiData as any).open_threads || [],
-            risk_files: (aiData as any).risk_files || [],
-            recommendation: (aiData as any).recommendation || null,
+            // Passthrough rich fields (key_files, blockers, etc.)
+            ...aiData,
             context_sources: {
-                memoryNodes: Math.min(memoryNodes.length, 10),
-                recentEvents: recentEvents.length,
-                brainDumps: (contextData.braindumps || []).length,
-                staleFiles: stalenessScores.map((f: any) => f.filePath)
+                events: recentEvents.length,
+                braindumps: braindumps.length,
+                memoryNodes: memoryNodes.length
             },
             generated_at: Date.now()
         });
 
     } catch (error: any) {
-        res.status(500).json({ error: error.message || 'AI reconstruction failed. Check backend.' });
+        console.error("Reconstruct Error:", error);
+        res.status(500).json({ error: error.message || 'AI reconstruction failed.' });
     }
 }
 
-router.post('/:projectId', handleReconstruct);
-router.get('/:projectId', handleReconstruct);
+router.post('/:projectId', authMiddleware, (req: Request, res: Response) => handleReconstruct(req as unknown as AuthRequest, res));
+router.get('/:projectId', authMiddleware, (req: Request, res: Response) => handleReconstruct(req as unknown as AuthRequest, res));
 
 export default router;

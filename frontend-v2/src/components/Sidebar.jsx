@@ -54,16 +54,27 @@ function Sidebar() {
         ))}
       </div>
 
-      {/* Bottom */}
+      {/* User Profile & Actions */}
       <div className="border-t border-outline p-3 flex flex-col gap-0.5">
-        <div className="flex items-center gap-3 px-3 py-2 text-tertiary font-mono text-xs uppercase tracking-wider cursor-pointer hover:bg-surface-dim">
-          <Circle size={16} strokeWidth={1.5} className="text-[color:var(--color-success)] fill-[color:var(--color-success)]" />
-          Agent Online
+        <div className="px-3 py-2 mb-1">
+          <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-tertiary">Logged in as</p>
+          <p className="text-xs font-mono text-primary-container truncate">
+            {JSON.parse(localStorage.getItem('user') || '{}').email || 'Developer'}
+          </p>
         </div>
+
+        <div 
+          onClick={toggleTheme}
+          className="flex items-center gap-3 px-3 py-2 text-tertiary font-mono text-xs uppercase tracking-wider cursor-pointer hover:bg-surface-dim transition-all"
+        >
+          {theme === 'dark' ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
+          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </div>
+
         <NavLink
           to="/settings"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 text-tertiary font-mono text-xs uppercase tracking-wider cursor-pointer transition-all duration-150 ${
+            `flex items-center gap-3 px-3 py-2 text-tertiary font-mono text-xs uppercase tracking-wider cursor-pointer transition-all ${
               isActive ? 'text-primary-container border-l-2 border-primary-container bg-surface-dim' : 'hover:bg-surface-dim border-l-2 border-transparent'
             }`
           }
@@ -71,12 +82,17 @@ function Sidebar() {
           <Settings size={16} strokeWidth={1.5} />
           Settings
         </NavLink>
+
         <div
-          onClick={toggleTheme}
-          className="flex items-center gap-3 px-3 py-2 text-tertiary font-mono text-xs uppercase tracking-wider cursor-pointer hover:bg-surface-dim"
+          onClick={() => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+          }}
+          className="flex items-center gap-3 px-3 py-2 text-error font-mono text-xs uppercase tracking-wider cursor-pointer hover:bg-error-container/10 transition-all"
         >
-          {theme === 'dark' ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
-          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          <Circle size={16} strokeWidth={1.5} className="text-error" />
+          Logout
         </div>
       </div>
     </nav>

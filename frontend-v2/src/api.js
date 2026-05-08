@@ -1,13 +1,43 @@
 const BASE = 'http://localhost:3001';
 
 async function req(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, options);
+  // Automatically add Auth header if token exists
+  const token = localStorage.getItem('token');
+  const headers = {
+    ...options.headers,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    return;
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
   return res.json();
 }
+
+// ── Auth ──────────────────────────────────────────────────────
+export const login = (email, password) =>
+  req('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+export const register = (email, password) =>
+  req('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
 
 // ── Dashboard ────────────────────────────────────────────────
 export const getStats = () => req('/dashboard/stats');
@@ -30,6 +60,12 @@ export const endSession = (sessionId) =>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId }),
+  });
+export const endSessionByProject = (project) =>
+  req('/session/end-by-project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
   });
 // CRUD
 export const getSession = (id) => req(`/session/${id}`);

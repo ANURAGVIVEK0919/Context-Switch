@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrainCircuit, Play, MessageSquare, Edit2, Save, AlertTriangle } from 'lucide-react';
+import { BrainCircuit, Play, MessageSquare, Edit2, Save, AlertTriangle, Square } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePolling, useApi } from '../hooks';
 import useWebSocket from '../hooks/useWebSocket';
@@ -7,7 +7,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import {
   getStats, getTimeline, getStaleness, getSessionHistory,
   getBrainDumps, getAllEvents, createBrainDump, getAllEnhancedEvents,
-  timeAgo, formatDuration
+  timeAgo, formatDuration, endSessionByProject
 } from '../api';
 
 const VelocityTooltip = ({ active, payload, label }) => {
@@ -151,11 +151,35 @@ export default function Overview() {
                 {projectGroups.map((p, i) => {
                   const stalePct = staleness?.files?.find(f => f.filePath?.includes(p.name))?.score || 0;
                   const barColors = ['var(--color-info)', 'var(--color-success)', 'var(--color-warning)', 'var(--color-muted)'];
+                  
+                  const handleEnd = async (e) => {
+                    e.stopPropagation();
+                    if (!window.confirm(`End session for ${p.name} and generate AI summary?`)) return;
+                    try {
+                      await endSessionByProject(p.name);
+                      setToastMsg(`Session ended for ${p.name}`);
+                      setTimeout(() => setToastMsg(''), 3000);
+                      refetchSessions();
+                      refetchStats();
+                    } catch (err) {
+                      setToastMsg('Error: ' + err.message);
+                    }
+                  };
+
                   return (
-                    <div key={p.name} className="border border-outline p-3 hover:bg-surface transition-colors cursor-pointer">
+                    <div key={p.name} className="border border-outline p-3 hover:bg-surface transition-colors cursor-pointer relative group">
                       <div className="flex justify-between items-center mb-1.5">
                         <span className="font-mono text-sm text-on-surface font-medium">{p.name}</span>
-                        <div className="w-2 h-2 rounded-full bg-[color:var(--color-success)]" />
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={handleEnd}
+                            title="End & Summarize"
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-error/20 text-error rounded transition-all"
+                          >
+                            <Square size={12} fill="currentColor" />
+                          </button>
+                          <div className="w-2 h-2 rounded-full bg-[color:var(--color-success)]" />
+                        </div>
                       </div>
                       <div className="text-[11px] text-tertiary mb-2 font-code-snippet truncate">{p.file}</div>
                       <div className="w-full bg-outline h-[3px]">

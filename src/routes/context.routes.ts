@@ -8,13 +8,16 @@ import db from "../db";
 import { buildContextFromMemory } from "../services/memoryService";
 import { generateContextSummary } from "../services/aiService";
 import { getAllScores } from "../services/stalenessService";
+import { authMiddleware, AuthRequest } from "../middleware/auth.middleware";
 
 const router = Router();
 
 // Return all events for /events endpoint
-router.get("/events", (req: Request, res: Response) => {
+router.get("/events", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
-    const rows = db.prepare("SELECT * FROM events").all();
+    const userId = authReq.user?.id;
+    const rows = db.prepare("SELECT * FROM events WHERE user_id = ?").all(userId);
     res.json(rows);
   } catch (err) {
     console.error("Failed to fetch events:", err);
@@ -22,17 +25,19 @@ router.get("/events", (req: Request, res: Response) => {
   }
 });
 
-router.get("/", (req: Request, res: Response) => {
+router.get("/", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
+    const userId = authReq.user?.id;
     // Fetch recent events
     const events = db.prepare(`
-      SELECT * FROM events ORDER BY ts DESC LIMIT 10
-    `).all();
+      SELECT * FROM events WHERE user_id = ? ORDER BY ts DESC LIMIT 10
+    `).all(userId);
 
     // Fetch recent brain dumps
     const dumps = db.prepare(`
-      SELECT * FROM braindumps ORDER BY ts DESC LIMIT 3
-    `).all();
+      SELECT * FROM braindumps WHERE user_id = ? ORDER BY ts DESC LIMIT 3
+    `).all(userId);
 
     // Extract file names
     const files = events.map((e: any) => e.filePath);
@@ -57,7 +62,7 @@ router.get("/", (req: Request, res: Response) => {
       });
     }
 
-    console.log("Generated context summary");
+    console.log("Generated context summary for user:", userId);
 
     res.json({ summary });
 
@@ -67,15 +72,17 @@ router.get("/", (req: Request, res: Response) => {
   }
 });
 
-router.get("/enhanced", async (req: Request, res: Response) => {
+router.get("/enhanced", authMiddleware, async (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
-    const project = (req.query.project as string) || "default";
+    const project = (authReq.query.project as string) || "default";
+    const userId = authReq.user?.id;
     
-    // fetch recent events (last 24 hrs mock limit)
-    const recentEvents = db.prepare(`SELECT * FROM events ORDER BY ts DESC LIMIT 50`).all();
-    const recentBraindumps = db.prepare(`SELECT * FROM braindumps ORDER BY ts DESC LIMIT 10`).all();
+    // fetch recent events filtered by user
+    const recentEvents = db.prepare(`SELECT * FROM events WHERE user_id = ? ORDER BY ts DESC LIMIT 50`).all(userId);
+    const recentBraindumps = db.prepare(`SELECT * FROM braindumps WHERE user_id = ? ORDER BY ts DESC LIMIT 10`).all(userId);
     
-    const memoryContext = buildContextFromMemory(project);
+    const memoryContext = buildContextFromMemory(project, userId!);
     const stalenessScores = getAllScores();
     
     // For now we just pass a string representing context to AI
@@ -99,11 +106,13 @@ router.get("/enhanced", async (req: Request, res: Response) => {
 // ── Events CRUD ───────────────────────────────────────────────────────────────
 
 // GET /context/events/:id — fetch a single event
-router.get("/events/:id", (req: Request, res: Response) => {
+router.get("/events/:id", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
+    const userId = authReq.user?.id;
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
-    const row = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    const row = db.prepare(`SELECT * FROM events WHERE id = ? AND user_id = ?`).get(id, userId);
     if (!row) return res.status(404).json({ success: false, error: "Event not found" });
     res.json({ success: true, data: row });
   } catch (err: any) {
@@ -112,11 +121,13 @@ router.get("/events/:id", (req: Request, res: Response) => {
 });
 
 // PUT /context/events/:id — update event fields
-router.put("/events/:id", (req: Request, res: Response) => {
+router.put("/events/:id", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
+    const userId = authReq.user?.id;
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
-    const existing = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    const existing = db.prepare(`SELECT * FROM events WHERE id = ? AND user_id = ?`).get(id, userId);
     if (!existing) return res.status(404).json({ success: false, error: "Event not found" });
     const { type, filePath, language, project, diff } = req.body;
     db.prepare(`
@@ -126,8 +137,8 @@ router.put("/events/:id", (req: Request, res: Response) => {
         language = COALESCE(?, language),
         project  = COALESCE(?, project),
         diff     = COALESCE(?, diff)
-      WHERE id = ?
-    `).run(type ?? null, filePath ?? null, language ?? null, project ?? null, diff ?? null, id);
+      WHERE id = ? AND user_id = ?
+    `).run(type ?? null, filePath ?? null, language ?? null, project ?? null, diff ?? null, id, userId);
     const updated = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
     res.json({ success: true, data: updated });
   } catch (err: any) {
@@ -136,13 +147,15 @@ router.put("/events/:id", (req: Request, res: Response) => {
 });
 
 // DELETE /context/events/:id — delete a single event
-router.delete("/events/:id", (req: Request, res: Response) => {
+router.delete("/events/:id", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
+    const userId = authReq.user?.id;
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: "Invalid id" });
-    const existing = db.prepare(`SELECT * FROM events WHERE id = ?`).get(id);
+    const existing = db.prepare(`SELECT * FROM events WHERE id = ? AND user_id = ?`).get(id, userId);
     if (!existing) return res.status(404).json({ success: false, error: "Event not found" });
-    db.prepare(`DELETE FROM events WHERE id = ?`).run(id);
+    db.prepare(`DELETE FROM events WHERE id = ? AND user_id = ?`).run(id, userId);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -150,13 +163,15 @@ router.delete("/events/:id", (req: Request, res: Response) => {
 });
 
 // DELETE /context/events — bulk delete events by IDs array
-router.delete("/events", (req: Request, res: Response) => {
+router.delete("/events", authMiddleware, (req: Request, res: Response) => {
+  const authReq = req as unknown as AuthRequest;
   try {
+    const userId = authReq.user?.id;
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0)
       return res.status(400).json({ success: false, error: "ids array required" });
     const placeholders = ids.map(() => "?").join(",");
-    const result = db.prepare(`DELETE FROM events WHERE id IN (${placeholders})`).run(...ids) as any;
+    const result = db.prepare(`DELETE FROM events WHERE id IN (${placeholders}) AND user_id = ?`).run(...ids, userId) as any;
     res.json({ success: true, deleted: result.changes });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

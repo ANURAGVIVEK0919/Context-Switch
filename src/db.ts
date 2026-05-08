@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const dbPath = path.resolve(__dirname, '../context_switch.db');
+const dbName = process.env.NODE_ENV === 'test' ? 'context_switch_test.db' : 'context_switch.db';
+const dbPath = path.resolve(__dirname, '..', dbName);
 const db = new Database(dbPath);
 
-// Create tables
+// Create base tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +22,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS braindumps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     content TEXT,
-    ts INTEGER
+    ts INTEGER,
+    session_id INTEGER,
+    project TEXT,
+    user_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -30,7 +34,10 @@ db.exec(`
     start_ts INTEGER,
     end_ts INTEGER,
     summary TEXT,
-    status TEXT
+    status TEXT,
+    ai_summary TEXT,
+    tags TEXT,
+    user_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS memory_nodes (
@@ -40,68 +47,85 @@ db.exec(`
     type TEXT,
     score REAL,
     project TEXT,
-    ts INTEGER
+    ts INTEGER,
+    user_id INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS staleness_scores (
-    filePath TEXT PRIMARY KEY,
+    filePath TEXT,
     last_seen INTEGER,
     edit_count INTEGER,
-    score REAL
+    score REAL,
+    user_id INTEGER,
+    PRIMARY KEY (filePath, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE,
+    password_hash TEXT,
+    created_at INTEGER
   );
 `);
 
-// Migration safety: Ensure all required columns exist in 'events' table
-const requiredEventColumns = [
-  { name: "language", type: "TEXT" },
-  { name: "project", type: "TEXT" },
-  { name: "ts", type: "INTEGER" },
-  { name: "diff", type: "TEXT" }
-];
-
-const tableInfo = db.prepare('PRAGMA table_info(events);').all();
-const existingColumns = (tableInfo as { name: string }[]).map(col => col.name);
-
-for (const col of requiredEventColumns) {
-  if (!existingColumns.includes(col.name)) {
-    db.prepare(`ALTER TABLE events ADD COLUMN ${col.name} ${col.type};`).run();
-    console.log(`Migrated: Added column '${col.name}' to events table.`);
-  }
+/**
+ * Migration helper to safely add columns if they don't exist
+ */
+function addColumnIfNotExists(table: string, column: string, type: string) {
+    const info = db.prepare(`PRAGMA table_info(${table});`).all() as { name: string }[];
+    if (!info.map(c => c.name).includes(column)) {
+        db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`).run();
+        console.log(`Migrated: Added column '${column}' to ${table} table.`);
+    }
 }
 
-// Migration: Add ai_summary column to sessions table if missing
-const sessionTableInfo = db.prepare('PRAGMA table_info(sessions);').all();
-const sessionColumns = (sessionTableInfo as { name: string }[]).map(col => col.name);
-if (!sessionColumns.includes('ai_summary')) {
-  db.prepare(`ALTER TABLE sessions ADD COLUMN ai_summary TEXT;`).run();
-  console.log(`Migrated: Added column 'ai_summary' to sessions table.`);
-}
+// Ensure all schema updates are applied (for existing DBs)
+addColumnIfNotExists('events', 'language', 'TEXT');
+addColumnIfNotExists('events', 'project', 'TEXT');
+addColumnIfNotExists('events', 'ts', 'INTEGER');
+addColumnIfNotExists('events', 'diff', 'TEXT');
+addColumnIfNotExists('events', 'severity', 'TEXT');
+addColumnIfNotExists('events', 'source', "TEXT DEFAULT 'human'");
+addColumnIfNotExists('events', 'git_branch', 'TEXT');
+addColumnIfNotExists('events', 'user_id', 'INTEGER');
 
-// Migration: Add severity column to events table for diagnostic events
-if (!existingColumns.includes('severity')) {
-  db.prepare(`ALTER TABLE events ADD COLUMN severity TEXT;`).run();
-  console.log(`Migrated: Added column 'severity' to events table.`);
-}
+addColumnIfNotExists('sessions', 'ai_summary', 'TEXT');
+addColumnIfNotExists('sessions', 'tags', 'TEXT');
+addColumnIfNotExists('sessions', 'user_id', 'INTEGER');
 
-// Migration: Add source column to events table for AI vs Human tracking
-if (!existingColumns.includes('source')) {
-  db.prepare(`ALTER TABLE events ADD COLUMN source TEXT DEFAULT 'human';`).run();
-  console.log(`Migrated: Added column 'source' to events table.`);
-}
+addColumnIfNotExists('braindumps', 'session_id', 'INTEGER');
+addColumnIfNotExists('braindumps', 'project', 'TEXT');
+addColumnIfNotExists('braindumps', 'user_id', 'INTEGER');
 
-// Migration: Add session_id column to braindumps table
-const braindumpTableInfo = db.prepare('PRAGMA table_info(braindumps);').all();
-const braindumpColumns = (braindumpTableInfo as { name: string }[]).map(col => col.name);
-if (!braindumpColumns.includes('session_id')) {
-  db.prepare(`ALTER TABLE braindumps ADD COLUMN session_id INTEGER;`).run();
-  console.log(`Migrated: Added column 'session_id' to braindumps table.`);
-}
+addColumnIfNotExists('memory_nodes', 'user_id', 'INTEGER');
 
-// Migration: Add tags column to sessions table
-if (!sessionColumns.includes('tags')) {
-  db.prepare(`ALTER TABLE sessions ADD COLUMN tags TEXT DEFAULT NULL;`).run();
-  console.log(`Migrated: Added column 'tags' to sessions table.`);
-}
+addColumnIfNotExists('users', 'telegram_chat_id', 'TEXT');
+addColumnIfNotExists('users', 'last_event_ts', 'INTEGER');
+addColumnIfNotExists('users', 'idle_warn_sent', 'INTEGER'); // boolean 0/1
+addColumnIfNotExists('users', 'idle_alert_sent', 'INTEGER'); // boolean 0/1
+
+addColumnIfNotExists('staleness_scores', 'user_id', 'INTEGER');
+
+// FTS5 virtual table for free semantic text search (replaces OpenAI vectors)
+db.exec(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+    content,
+    project,
+    content_type,
+    content_id UNINDEXED,
+    user_id UNINDEXED
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS project_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT,
+    user_id INTEGER,
+    role TEXT DEFAULT 'viewer',
+    UNIQUE(project, user_id)
+  );
+`);
 
 console.log("Database schema ready ✅");
 

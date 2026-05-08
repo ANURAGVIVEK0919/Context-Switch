@@ -38,25 +38,35 @@ export const generateContextSummary = async (context: string) => {
   }
 };
 
-export const aiReason = async (memoryContext: string, brief: string, systemPrompt?: string) => {
+export const aiReason = async (memoryContext: string, brief: string, systemPrompt?: string): Promise<Record<string, any>> => {
   try {
     const response = await client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "system", content: `${systemPrompt || "You are an AI assistant helping a developer."}\n\nFormat your response strictly as JSON with summary (string), confidence (number), and next_steps (array of strings).` },
+        {
+          role: "system",
+          content: systemPrompt || "You are an AI assistant helping a developer. Return ONLY valid JSON."
+        },
         { role: "user", content: `Context:\n${memoryContext}\n\nTask:\n${brief}` }
       ],
       response_format: { type: "json_object" }
     });
     const content = response.choices[0]?.message?.content || "{}";
     const parsed = JSON.parse(content);
+
+    // Ensure baseline fields always exist, then spread all additional AI-returned fields
     return {
-      summary: parsed.summary || "No reasoning generated.",
-      confidence: parsed.confidence || 0.0,
-      next_steps: parsed.next_steps || []
+      summary:    parsed.summary    || "No reasoning generated.",
+      confidence: parsed.confidence ?? 0,
+      next_steps: parsed.next_steps || [],
+      ...parsed  // pass through key_files, blockers, current_hypothesis, project_state, etc.
     };
   } catch (error) {
     console.error("AI Reason Failed:", error);
-    return { summary: "Fallback reasoning due to API error.", confidence: 0.0, next_steps: ["Check API Key", "Retry"] };
+    return {
+      summary:    "Fallback reasoning due to API error.",
+      confidence: 0,
+      next_steps: ["Check API Key", "Retry"]
+    };
   }
 };

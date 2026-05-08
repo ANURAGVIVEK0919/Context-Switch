@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Overview from './pages/Overview';
 import Projects from './pages/Projects';
@@ -8,33 +8,30 @@ import BrainDumps from './pages/BrainDumps';
 import AISynthesis from './pages/AISynthesis';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import { ThemeProvider } from './ThemeContext';
 
-export const ThemeContext = createContext();
+function RequireAuth({ children }) {
+  const token = localStorage.getItem('token');
+  // Strict check: must be a truthy string and not 'null'/'undefined'
+  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
 function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (theme === 'dark') {
-      root.classList.remove('light');
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-      root.classList.add('light');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
-
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          {/* Auth Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Protected Routes */}
+          <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Overview />} />
             <Route path="projects" element={<Projects />} />
             <Route path="sessions" element={<Sessions />} />
@@ -45,7 +42,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-    </ThemeContext.Provider>
+    </ThemeProvider>
   );
 }
 

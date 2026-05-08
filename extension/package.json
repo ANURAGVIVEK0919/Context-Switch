@@ -1,10 +1,34 @@
 {
   "name": "contextswitch-extension",
-  "displayName": "ContextSwitch Extension",
-  "version": "0.0.2",
+  "displayName": "ContextSwitch",
+  "description": "Tracks your coding sessions, captures context, and uses AI to help you resume work instantly.",
+  "version": "0.0.4",
+  "publisher": "contextswitch",
   "engines": {
     "vscode": "^1.80.0"
   },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "context",
+    "ai",
+    "productivity",
+    "session",
+    "reconstruction",
+    "developer tools"
+  ],
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ANURAGVIVEK0919/Context-Switch"
+  },
+  "bugs": {
+    "url": "https://github.com/ANURAGVIVEK0919/Context-Switch/issues"
+  },
+  "homepage": "https://github.com/ANURAGVIVEK0919/Context-Switch#readme",
   "main": "./out/extension.js",
   "activationEvents": [
     "*",
@@ -16,32 +40,24 @@
   "contributes": {
     "commands": [
       {
-        "command": "contextswitch.testEvent",
-        "title": "Test ContextSwitch Event"
-      },
-      {
-        "command": "contextswitch.showEvents",
-        "title": "Show ContextSwitch Events"
-      },
-      {
-        "command": "contextswitch.addBrainDump",
-        "title": "Add Brain Dump"
-      },
-      {
-        "command": "contextswitch.showContext",
-        "title": "Show Context Summary"
-<<<<<<< Updated upstream
-      }
-    ]
-=======
-      },
-      {
         "command": "contextswitch.runOpenClaw",
-        "title": "ContextSwitch: Run OpenClaw"
+        "title": "ContextSwitch: Run OpenClaw Analysis"
       },
       {
         "command": "contextswitch.openSidebar",
         "title": "ContextSwitch: Open Side Panel"
+      },
+      {
+        "command": "contextswitch.addBrainDump",
+        "title": "ContextSwitch: Add Brain Dump"
+      },
+      {
+        "command": "contextswitch.showContext",
+        "title": "ContextSwitch: Show Context Summary"
+      },
+      {
+        "command": "contextswitch.resetAndLogin",
+        "title": "ContextSwitch: Reset and Login"
       }
     ],
     "viewsContainers": {
@@ -62,11 +78,12 @@
         }
       ]
     }
->>>>>>> Stashed changes
   },
   "scripts": {
     "compile": "tsc -p .",
-    "watch": "tsc -p . --watch"
+    "watch": "tsc -p . --watch",
+    "bundle": "npx esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "package": "npm run bundle && npx vsce package"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -77,9 +94,21 @@
     "axios"
   ],
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
+    "@types/supertest": "^7.2.0",
     "@types/vscode": "^1.80.0",
     "@types/ws": "^8.18.1",
+    "@vscode/vsce": "^3.0.0",
+    "cross-env": "^10.1.0",
+    "esbuild": "^0.19.0",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.3.3"
-  }
+  },
+  "bundleDependencies": [
+    "ws",
+    "axios"
+  ]
 }
